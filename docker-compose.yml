@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: helpdeskx_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_password_xyz
+      POSTGRES_DB: helpdeskx
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    container_name: helpdeskx_backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres_password_xyz@db:5432/helpdeskx
+      - SECRET_KEY=super_secret_key_change_me_in_production_1234567890
+    depends_on:
+      - db
+
+  frontend:
+    build: ./frontend
+    container_name: helpdeskx_frontend
+    restart: always
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

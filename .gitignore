@@ -1,0 +1,28 @@
+# Python/Backend
+backend/venv/
+**/__pycache__/
+backend/.pytest_cache/
+backend/uploads/
+.pytest_cache/
+*.db
+*.pyc
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# IDE/OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Agent files
+.agent_uuid
