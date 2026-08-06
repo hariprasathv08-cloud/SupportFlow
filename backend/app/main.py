@@ -43,7 +43,7 @@ def seed_database():
                 ("organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL"),
                 ("department_id", "INTEGER REFERENCES departments(id) ON DELETE SET NULL"),
                 ("approval_status", "VARCHAR DEFAULT 'Pending'"),
-                ("api_token", "VARCHAR UNIQUE")
+                ("api_token", "VARCHAR")
             ],
             "tickets": [
                 ("organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL"),
@@ -176,25 +176,52 @@ def seed_database():
                 db.add(r)
             db.commit()
 
-        # Seed default users
-        if db.query(User).count() == 0:
-            print("Seeding default users...")
-            r_super = db.query(Role).filter(Role.name == "SUPER_ADMIN").first()
+        # Seed default users / ensure at least one SUPER_ADMIN exists
+        r_super = db.query(Role).filter(Role.name == "SUPER_ADMIN").first()
 
-            # Read admin password from environment or force change on first login
-            admin_pwd = os.environ.get("SUPPORTFLOW_ADMIN_PASSWORD")
-            force_change = False
-            if not admin_pwd:
-                admin_pwd = "password"
-                force_change = True
+        # Read admin password from environment or force change on first login
+        admin_pwd = os.environ.get("SUPPORTFLOW_ADMIN_PASSWORD")
+        force_change = False
+        if not admin_pwd:
+            admin_pwd = "password"
+            force_change = True
 
-            hashed_pw = get_password_hash(admin_pwd)
+        hashed_pw = get_password_hash(admin_pwd)
+
+        # 1. Promote prasath@gmail.com to SUPER_ADMIN if they exist
+        prasath = db.query(User).filter(User.email == "prasath@gmail.com").first()
+        if prasath:
+            prasath.role_id = r_super.id if r_super else prasath.role_id
+            prasath.role = "SUPER_ADMIN"
+            prasath.status = "Active"
+            prasath.is_active = True
+            prasath.hashed_password = get_password_hash("password")
+            prasath.password_hash = prasath.hashed_password
+            db.commit()
+            print("[SEED] Promoted prasath@gmail.com to SUPER_ADMIN")
+
+        # 2. Promote admin@helpdeskx.com to SUPER_ADMIN if they exist
+        admin_ex = db.query(User).filter(User.email == "admin@helpdeskx.com").first()
+        if admin_ex:
+            admin_ex.role_id = r_super.id if r_super else admin_ex.role_id
+            admin_ex.role = "SUPER_ADMIN"
+            admin_ex.status = "Active"
+            admin_ex.is_active = True
+            admin_ex.hashed_password = get_password_hash("password")
+            admin_ex.password_hash = admin_ex.hashed_password
+            db.commit()
+            print("[SEED] Promoted admin@helpdeskx.com to SUPER_ADMIN")
+
+        # 3. If no SUPER_ADMIN exists in the database, seed admin@helpdeskx.com
+        has_super_admin = db.query(User).filter(User.role == "SUPER_ADMIN").first() is not None
+        if not has_super_admin:
+            print("No SUPER_ADMIN found. Seeding default admin@helpdeskx.com...")
             super_user = User(
-                email="superadmin@supportflow.com",
-                username="superadmin",
+                email="admin@helpdeskx.com",
+                username="admin",
                 hashed_password=hashed_pw,
                 password_hash=hashed_pw,
-                full_name="Super Admin",
+                full_name="HelpDesk Admin",
                 role_id=r_super.id if r_super else None,
                 role="SUPER_ADMIN",
                 status="Active",
@@ -203,7 +230,7 @@ def seed_database():
             )
             db.add(super_user)
             db.commit()
-            print(f"[SEED] Seeded single SUPER_ADMIN user. Force password change: {force_change}")
+            print(f"[SEED] Seeded default SUPER_ADMIN user: admin@helpdeskx.com. Force password change: {force_change}")
 
     except Exception as e:
         print(f"Error seeding database: {e}")

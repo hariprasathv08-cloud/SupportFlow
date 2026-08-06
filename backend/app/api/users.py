@@ -340,5 +340,5 @@ def get_audit_logs(
     db: Session = Depends(get_db),
     current_user=Depends(PermissionChecker("manage_users"))
 ):
-    from app.core.scopes import get_scoped_audits
-    return get_scoped_audits(db, current_user).order_by(AuditLog.created_at.desc()).limit(50).all()
+    from app.core.scopes import get_scoped_audit_logs
+    return get_scoped_audit_logs(db, current_user).order_by(AuditLog.created_at.desc()).limit(50).all()
