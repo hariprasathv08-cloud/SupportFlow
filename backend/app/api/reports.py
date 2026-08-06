@@ -50,17 +50,29 @@ async def get_current_user_reports(
         raise HTTPException(status_code=401, detail="Could not validate credentials")
     return user
 
+def is_admin(user) -> bool:
+    return user.role in ["Admin", "Super Administrator", "Administrator"]
+
 # Endpoint to fetch counts for disabling report options
 @router.get("/status")
 def get_reports_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_reports)
 ):
-    total_assets = db.query(Asset).count()
-    total_tickets = db.query(Ticket).count()
-    total_software = db.query(Software).count()
-    total_alerts = db.query(Alert).count()
-    total_users = db.query(User).count()
+    if not is_admin(current_user):
+        user_assets = db.query(Asset).filter(Asset.assigned_user_id == current_user.id).all()
+        user_asset_ids = [a.id for a in user_assets]
+        total_assets = len(user_assets)
+        total_tickets = db.query(Ticket).filter(Ticket.created_by_id == current_user.id).count()
+        total_software = db.query(Software).filter(Software.asset_id.in_(user_asset_ids)).count() if user_asset_ids else 0
+        total_alerts = db.query(Alert).filter(Alert.asset_id.in_(user_asset_ids)).count() if user_asset_ids else 0
+        total_users = 1
+    else:
+        total_assets = db.query(Asset).count()
+        total_tickets = db.query(Ticket).count()
+        total_software = db.query(Software).count()
+        total_alerts = db.query(Alert).count()
+        total_users = db.query(User).count()
     
     dashboard_available = (total_assets > 0 or total_tickets > 0 or total_users > 0)
     
@@ -98,6 +110,44 @@ def run_report_generation(task_id: str, req_data: dict, user_id: int):
         task.progress = 20
         db.commit()
         
+        # Resolve user permissions
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return
+        is_admin_user = user.role in ["Admin", "Super Administrator", "Administrator"]
+        
+        if not is_admin_user:
+            user_assets = db.query(Asset).filter(Asset.assigned_user_id == user_id).all()
+            user_asset_ids = [a.id for a in user_assets]
+        else:
+            user_assets = []
+            user_asset_ids = []
+
+        def get_assets_query():
+            if is_admin_user:
+                return db.query(Asset)
+            return db.query(Asset).filter(Asset.assigned_user_id == user_id)
+            
+        def get_tickets_query():
+            if is_admin_user:
+                return db.query(Ticket)
+            return db.query(Ticket).filter(Ticket.created_by_id == user_id)
+            
+        def get_alerts_query():
+            if is_admin_user:
+                return db.query(Alert)
+            return db.query(Alert).filter(Alert.asset_id.in_(user_asset_ids)) if user_asset_ids else db.query(Alert).filter(Alert.id == -1)
+            
+        def get_software_query():
+            if is_admin_user:
+                return db.query(Software)
+            return db.query(Software).filter(Software.asset_id.in_(user_asset_ids)) if user_asset_ids else db.query(Software).filter(Software.id == -1)
+            
+        def get_users_query():
+            if is_admin_user:
+                return db.query(User)
+            return db.query(User).filter(User.id == user_id)
+
         # Create output directory
         out_dir = os.path.join(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "generated_reports")
         os.makedirs(out_dir, exist_ok=True)
@@ -119,16 +169,16 @@ def run_report_generation(task_id: str, req_data: dict, user_id: int):
             
             if report_type == "Complete Enterprise Report":
                 if fmt == "pdf":
-                    file_bytes = report_gen.generate_complete_enterprise_pdf(db, date_range)
+                    file_bytes = report_gen.generate_complete_enterprise_pdf(db, date_range, user_id)
                 elif fmt == "excel":
-                    file_bytes = report_gen.generate_complete_enterprise_excel(db, date_range)
+                    file_bytes = report_gen.generate_complete_enterprise_excel(db, date_range, user_id)
                 elif fmt == "csv":
                     headers = ["Enterprise Operations Summary Indicator", "Count"]
                     rows = [
-                        ["Endpoints Managed", db.query(Asset).count()],
-                        ["Tickets backlog", db.query(Ticket).count()],
-                        ["Unresolved alerts", db.query(Alert).filter(Alert.resolved == False).count()],
-                        ["Users count", db.query(User).count()]
+                        ["Endpoints Managed", get_assets_query().count()],
+                        ["Tickets backlog", get_tickets_query().count()],
+                        ["Unresolved alerts", get_alerts_query().filter(Alert.resolved == False).count()],
+                        ["Users count", get_users_query().count()]
                     ]
                     csv_str = report_gen.generate_csv_report(headers, rows)
                     file_bytes = csv_str.encode('utf-8')
@@ -136,18 +186,18 @@ def run_report_generation(task_id: str, req_data: dict, user_id: int):
                 if report_type == "Dashboard Summary":
                     if fmt == "pdf":
                         summary_data = {
-                            "total_assets": db.query(Asset).count(),
-                            "total_tickets": db.query(Ticket).count(),
-                            "resolved_tickets": db.query(Ticket).filter(Ticket.status == "Resolved").count(),
-                            "critical_alerts": db.query(Alert).filter(Alert.resolved == False, Alert.severity == "Critical").count(),
-                            "total_users": db.query(User).count()
+                            "total_assets": get_assets_query().count(),
+                            "total_tickets": get_tickets_query().count(),
+                            "resolved_tickets": get_tickets_query().filter(Ticket.status == "Resolved").count(),
+                            "critical_alerts": get_alerts_query().filter(Alert.resolved == False, Alert.severity == "Critical").count(),
+                            "total_users": get_users_query().count()
                         }
-                        tickets_list = db.query(Ticket).order_by(Ticket.created_at.desc()).limit(5).all()
+                        tickets_list = get_tickets_query().order_by(Ticket.created_at.desc()).limit(5).all()
                         recent_tickets = [
                             [t.id, t.title, t.category, t.priority, t.status, t.created_at.strftime('%Y-%m-%d %H:%M') if t.created_at else '']
                             for t in tickets_list
                         ]
-                        alerts_list = db.query(Alert).filter(Alert.resolved == False).order_by(Alert.created_at.desc()).limit(5).all()
+                        alerts_list = get_alerts_query().filter(Alert.resolved == False).order_by(Alert.created_at.desc()).limit(5).all()
                         active_alerts = [
                             [a.id, a.asset.hostname if a.asset else 'Local Host', a.category, a.severity, a.message, a.created_at.strftime('%Y-%m-%d %H:%M') if a.created_at else '']
                             for a in alerts_list
@@ -156,9 +206,9 @@ def run_report_generation(task_id: str, req_data: dict, user_id: int):
                     else:
                         headers = ["Metric", "Count"]
                         rows = [
-                            ["Assets Monitored", db.query(Asset).count()],
-                            ["Total Tickets", db.query(Ticket).count()],
-                            ["Active alerts", db.query(Alert).filter(Alert.resolved == False).count()]
+                            ["Assets Monitored", get_assets_query().count()],
+                            ["Total Tickets", get_tickets_query().count()],
+                            ["Active alerts", get_alerts_query().filter(Alert.resolved == False).count()]
                         ]
                         if fmt == "excel":
                             file_bytes = report_gen.generate_excel_report("Dashboard_Summary", headers, rows)
@@ -166,7 +216,7 @@ def run_report_generation(task_id: str, req_data: dict, user_id: int):
                             csv_str = report_gen.generate_csv_report(headers, rows)
                             file_bytes = csv_str.encode('utf-8')
                 elif report_type == "Assets":
-                    assets = db.query(Asset).all()
+                    assets = get_assets_query().all()
                     headers = ["ID", "Asset Tag", "Hostname", "Type", "Status", "Health Score"]
                     rows = [[a.id, a.asset_tag, a.hostname or 'N/A', a.type or 'Workstation', a.status, f"{a.health_score}%"] for a in assets]
                     if fmt == "pdf":
@@ -177,7 +227,7 @@ def run_report_generation(task_id: str, req_data: dict, user_id: int):
                         csv_str = report_gen.generate_csv_report(headers, rows)
                         file_bytes = csv_str.encode('utf-8')
                 elif report_type == "Tickets":
-                    tickets = db.query(Ticket).all()
+                    tickets = get_tickets_query().all()
                     headers = ["ID", "Title", "Priority", "Status", "Created At"]
                     rows = [[t.id, t.title, t.priority, t.status, t.created_at.strftime("%Y-%m-%d") if t.created_at else ''] for t in tickets]
                     if fmt == "pdf":
@@ -188,7 +238,7 @@ def run_report_generation(task_id: str, req_data: dict, user_id: int):
                         csv_str = report_gen.generate_csv_report(headers, rows)
                         file_bytes = csv_str.encode('utf-8')
                 elif report_type == "Software Inventory":
-                    software = db.query(Software).all()
+                    software = get_software_query().all()
                     headers = ["ID", "Host", "Name", "Version", "Publisher"]
                     rows = [[s.id, s.asset.hostname if s.asset else s.endpoint_uuid, s.name, s.version or 'N/A', s.publisher or 'N/A'] for s in software]
                     if fmt == "pdf":
@@ -199,7 +249,7 @@ def run_report_generation(task_id: str, req_data: dict, user_id: int):
                         csv_str = report_gen.generate_csv_report(headers, rows)
                         file_bytes = csv_str.encode('utf-8')
                 elif report_type == "Network":
-                    assets = db.query(Asset).all()
+                    assets = get_assets_query().all()
                     headers = ["Hostname", "IP Address", "MAC Address", "Status"]
                     rows = [[a.hostname or 'N/A', a.ip_address or 'N/A', a.mac_address or 'N/A', a.status] for a in assets]
                     if fmt == "pdf":
@@ -210,7 +260,7 @@ def run_report_generation(task_id: str, req_data: dict, user_id: int):
                         csv_str = report_gen.generate_csv_report(headers, rows)
                         file_bytes = csv_str.encode('utf-8')
                 elif report_type == "System Health":
-                    assets = db.query(Asset).all()
+                    assets = get_assets_query().all()
                     headers = ["Hostname", "CPU Usage", "RAM Usage", "Disk Usage", "Health Score"]
                     rows = [[a.hostname or 'N/A', f"{a.cpu_usage}%", f"{a.ram_usage}%", f"{a.disk_usage}%", f"{a.health_score}%"] for a in assets]
                     if fmt == "pdf":
@@ -221,7 +271,7 @@ def run_report_generation(task_id: str, req_data: dict, user_id: int):
                         csv_str = report_gen.generate_csv_report(headers, rows)
                         file_bytes = csv_str.encode('utf-8')
                 elif report_type == "Users":
-                    users = db.query(User).all()
+                    users = get_users_query().all()
                     headers = ["ID", "Full Name", "Email", "Role", "Status"]
                     rows = [[u.id, u.full_name, u.email, u.role, u.status] for u in users]
                     if fmt == "pdf":
@@ -232,7 +282,7 @@ def run_report_generation(task_id: str, req_data: dict, user_id: int):
                         csv_str = report_gen.generate_csv_report(headers, rows)
                         file_bytes = csv_str.encode('utf-8')
                 elif report_type == "Alerts":
-                    alerts = db.query(Alert).all()
+                    alerts = get_alerts_query().all()
                     headers = ["ID", "Category", "Severity", "Message", "Resolved"]
                     rows = [[al.id, al.category, al.severity, al.message, "Resolved" if al.resolved else "Active"] for al in alerts]
                     if fmt == "pdf":

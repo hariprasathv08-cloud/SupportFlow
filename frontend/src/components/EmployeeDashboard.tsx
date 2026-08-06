@@ -212,7 +212,7 @@ export default function EmployeeDashboard() {
             </div>
           ) : (
             <div className="p-8 text-center text-slate-500 bg-slate-950/20 border border-slate-800 rounded-xl">
-              No corporate workstation assigned to your profile.
+              No monitored endpoint connected.
             </div>
           )}
         </div>

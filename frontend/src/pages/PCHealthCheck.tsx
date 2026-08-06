@@ -62,7 +62,7 @@ export default function PCHealthCheck() {
   const loadDiagnostics = async (triggerScan: boolean = false, deviceIdOverride?: number) => {
     const targetId = deviceIdOverride !== undefined ? deviceIdOverride : selectedDeviceId;
     if (targetId === null) {
-      setError("No monitored endpoints connected. Please install the monitoring agent on a machine by running the agent.py script.");
+      setError("No monitored endpoint connected. Please install the monitoring agent on a machine by running the agent.py script.");
       setLoading(false);
       return;
     }

@@ -462,7 +462,7 @@ export default function Dashboard() {
                   <td colSpan={9} className="py-12 px-4 text-center text-slate-500 bg-slate-50/50 dark:bg-slate-900/50">
                     <div className="flex flex-col items-center justify-center max-w-lg mx-auto py-2">
                       <Server className="h-8 w-8 text-slate-400 dark:text-slate-600 mb-3 animate-pulse" />
-                      <p className="font-bold text-sm text-slate-800 dark:text-slate-200">No monitored endpoints connected.</p>
+                      <p className="font-bold text-sm text-slate-800 dark:text-slate-200">No monitored endpoint connected.</p>
                       <p className="text-[11px] text-slate-450 mt-1 leading-relaxed">
                         There are currently no machines connected to SupportFlow. Install or start the lightweight client-side daemon on your hosts to collect telemetry.
                       </p>

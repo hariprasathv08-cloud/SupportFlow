@@ -4,12 +4,15 @@ from datetime import datetime
 from app.schemas.asset import AssetResponse
 
 class TelemetryPayload(BaseModel):
-    uuid: str
+    device_uuid: str
+    uuid: Optional[str] = None
     hostname: str
     ip_address: Optional[str] = None
     mac_address: Optional[str] = None
-    os: str
+    operating_system: str
+    os: Optional[str] = None
     kernel: Optional[str] = None
+    username: Optional[str] = None
     current_user: Optional[str] = None
     uptime: float
     cpu_usage: float

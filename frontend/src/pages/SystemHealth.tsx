@@ -150,7 +150,7 @@ export default function SystemHealth() {
         </div>
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-card p-12 text-center shadow-soft">
           <Server className="h-10 w-10 text-slate-400 mx-auto mb-3 animate-pulse" />
-          <p className="font-bold text-sm text-slate-800 dark:text-slate-200">No monitored endpoints connected.</p>
+          <p className="font-bold text-sm text-slate-800 dark:text-slate-200">No monitored endpoint connected.</p>
           <p className="text-xs text-slate-450 mt-2 max-w-md mx-auto leading-relaxed">
             Please register and start the client monitoring agent on your machines to collect process and service diagnostics. Run <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-primary font-semibold">python agent.py</code> to initialize connection.
           </p>

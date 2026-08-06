@@ -344,7 +344,7 @@ def send_report_email(to_emails: List[str], attachment_paths: List[str], report_
         print(f"[MAIL SYSTEM] ERROR: Failed to deliver email via SMTP: {e}")
         raise e
 
-def generate_complete_enterprise_pdf(db, date_range: str) -> bytes:
+def generate_complete_enterprise_pdf(db, date_range: str, user_id: int = None) -> bytes:
     from app.models.user import User
     from app.models.asset import Asset
     from app.models.ticket import Ticket
@@ -352,13 +352,52 @@ def generate_complete_enterprise_pdf(db, date_range: str) -> bytes:
     from app.models.software import Software
     from app.models.audit import AuditLog
 
-    total_users = db.query(User).count()
-    total_assets = db.query(Asset).count()
-    total_tickets = db.query(Ticket).count()
-    resolved_tickets = db.query(Ticket).filter(Ticket.status == "Resolved").count()
-    active_alerts = db.query(Alert).filter(Alert.resolved == False).count()
-    total_software = db.query(Software).count()
-    total_audits = db.query(AuditLog).count()
+    # Resolve user permissions
+    is_admin_user = True
+    if user_id is not None:
+        user = db.query(User).filter(User.id == user_id).first()
+        if user:
+            is_admin_user = user.role in ["Admin", "Super Administrator", "Administrator"]
+
+    if not is_admin_user:
+        user_assets = db.query(Asset).filter(Asset.assigned_user_id == user_id).all()
+        user_asset_ids = [a.id for a in user_assets]
+    else:
+        user_assets = []
+        user_asset_ids = []
+
+    def get_assets_query():
+        if is_admin_user:
+            return db.query(Asset)
+        return db.query(Asset).filter(Asset.assigned_user_id == user_id)
+        
+    def get_tickets_query():
+        if is_admin_user:
+            return db.query(Ticket)
+        return db.query(Ticket).filter(Ticket.created_by_id == user_id)
+        
+    def get_alerts_query():
+        if is_admin_user:
+            return db.query(Alert)
+        return db.query(Alert).filter(Alert.asset_id.in_(user_asset_ids)) if user_asset_ids else db.query(Alert).filter(Alert.id == -1)
+        
+    def get_software_query():
+        if is_admin_user:
+            return db.query(Software)
+        return db.query(Software).filter(Software.asset_id.in_(user_asset_ids)) if user_asset_ids else db.query(Software).filter(Software.id == -1)
+        
+    def get_users_query():
+        if is_admin_user:
+            return db.query(User)
+        return db.query(User).filter(User.id == user_id)
+
+    total_users = get_users_query().count()
+    total_assets = get_assets_query().count()
+    total_tickets = get_tickets_query().count()
+    resolved_tickets = get_tickets_query().filter(Ticket.status == "Resolved").count()
+    active_alerts = get_alerts_query().filter(Alert.resolved == False).count()
+    total_software = get_software_query().count()
+    total_audits = db.query(AuditLog).count() if is_admin_user else 0
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -475,7 +514,7 @@ def generate_complete_enterprise_pdf(db, date_range: str) -> bytes:
     
     # Assets
     story.append(Paragraph("Hardware Assets Inventory", h1_style))
-    assets = db.query(Asset).limit(20).all()
+    assets = get_assets_query().limit(20).all()
     asset_headers = ["Asset Tag", "Hostname", "OS Platform", "IP Address", "Health Score"]
     t_asset_data = [[Paragraph(h, header_cell_style) for h in asset_headers]]
     for a in assets:
@@ -493,7 +532,7 @@ def generate_complete_enterprise_pdf(db, date_range: str) -> bytes:
     
     # Tickets
     story.append(Paragraph("SupportFlow Incident Ledger", h1_style))
-    tickets = db.query(Ticket).limit(20).all()
+    tickets = get_tickets_query().limit(20).all()
     ticket_headers = ["ID", "Title", "Priority", "Status", "Assigned To"]
     t_ticket_data = [[Paragraph(h, header_cell_style) for h in ticket_headers]]
     for t in tickets:
@@ -512,7 +551,7 @@ def generate_complete_enterprise_pdf(db, date_range: str) -> bytes:
     buffer.close()
     return pdf_bytes
 
-def generate_complete_enterprise_excel(db, date_range: str) -> bytes:
+def generate_complete_enterprise_excel(db, date_range: str, user_id: int = None) -> bytes:
     wb = Workbook()
     
     # 1. Summary sheet
@@ -530,34 +569,68 @@ def generate_complete_enterprise_excel(db, date_range: str) -> bytes:
     from app.models.software import Software
     from app.models.audit import AuditLog
     
+    # Resolve user permissions
+    is_admin_user = True
+    if user_id is not None:
+        user = db.query(User).filter(User.id == user_id).first()
+        if user:
+            is_admin_user = user.role in ["Admin", "Super Administrator", "Administrator"]
+
+    if not is_admin_user:
+        user_assets = db.query(Asset).filter(Asset.assigned_user_id == user_id).all()
+        user_asset_ids = [a.id for a in user_assets]
+    else:
+        user_assets = []
+        user_asset_ids = []
+
+    def get_assets_query():
+        if is_admin_user:
+            return db.query(Asset)
+        return db.query(Asset).filter(Asset.assigned_user_id == user_id)
+        
+    def get_tickets_query():
+        if is_admin_user:
+            return db.query(Ticket)
+        return db.query(Ticket).filter(Ticket.created_by_id == user_id)
+        
+    def get_alerts_query():
+        if is_admin_user:
+            return db.query(Alert)
+        return db.query(Alert).filter(Alert.asset_id.in_(user_asset_ids)) if user_asset_ids else db.query(Alert).filter(Alert.id == -1)
+        
+    def get_software_query():
+        if is_admin_user:
+            return db.query(Software)
+        return db.query(Software).filter(Software.asset_id.in_(user_asset_ids)) if user_asset_ids else db.query(Software).filter(Software.id == -1)
+
     ws_summary.append(["Operational Metric", "Total Count", "Status"])
-    ws_summary.append(["Managed Endpoints", db.query(Asset).count(), "Monitoring"])
-    ws_summary.append(["SupportFlow Incidents", db.query(Ticket).count(), "Active"])
-    ws_summary.append(["Active Security Alerts", db.query(Alert).filter(Alert.resolved == False).count(), "Action Required"])
-    ws_summary.append(["Audited Operator Log Entries", db.query(AuditLog).count(), "Secure"])
+    ws_summary.append(["Managed Endpoints", get_assets_query().count(), "Monitoring"])
+    ws_summary.append(["SupportFlow Incidents", get_tickets_query().count(), "Active"])
+    ws_summary.append(["Active Security Alerts", get_alerts_query().filter(Alert.resolved == False).count(), "Action Required"])
+    ws_summary.append(["Audited Operator Log Entries", db.query(AuditLog).count() if is_admin_user else 0, "Secure"])
 
     # 2. Assets sheet
     ws_assets = wb.create_sheet(title="Assets")
     ws_assets.append(["ID", "Asset Tag", "Hostname", "Type", "Operating System", "IP Address", "Status", "Health Score"])
-    for a in db.query(Asset).all():
+    for a in get_assets_query().all():
         ws_assets.append([a.id, a.asset_tag, a.hostname or 'N/A', a.type or 'Workstation', a.operating_system or 'N/A', a.ip_address or 'N/A', a.status, f"{a.health_score}%"])
 
     # 3. Tickets sheet
     ws_tickets = wb.create_sheet(title="Tickets")
     ws_tickets.append(["ID", "Title", "Category", "Priority", "Status", "Created By", "Assigned To", "Created At"])
-    for t in db.query(Ticket).all():
+    for t in get_tickets_query().all():
         ws_tickets.append([t.id, t.title, t.category or 'General', t.priority, t.status, t.created_by.full_name if t.created_by else 'N/A', t.assigned_to.full_name if t.assigned_to else 'Unassigned', t.created_at.strftime("%Y-%m-%d %H:%M") if t.created_at else 'N/A'])
 
     # 4. Alerts sheet
     ws_alerts = wb.create_sheet(title="Security Alerts")
     ws_alerts.append(["ID", "Asset Hostname", "Category", "Severity", "Message", "Resolved", "Created At"])
-    for al in db.query(Alert).all():
+    for al in get_alerts_query().all():
         ws_alerts.append([al.id, al.asset.hostname if al.asset else 'Local Host', al.category, al.severity, al.message, "Resolved" if al.resolved else "Active Alert", al.created_at.strftime("%Y-%m-%d %H:%M") if al.created_at else 'N/A'])
 
     # 5. Software sheet
     ws_software = wb.create_sheet(title="Software Inventory")
     ws_software.append(["ID", "Hostname", "Software Name", "Version", "Publisher", "Install Date"])
-    for s in db.query(Software).all():
+    for s in get_software_query().all():
         ws_software.append([s.id, s.asset.hostname if s.asset else s.endpoint_uuid, s.name, s.version or 'N/A', s.publisher or 'N/A', s.install_date or 'N/A'])
 
     # Apply thin borders and column width adjustments to all sheets

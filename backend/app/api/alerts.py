@@ -18,9 +18,9 @@ def list_alerts(
     query = db.query(Alert)
     if current_user.role == "Viewer":
         from app.models.asset import Asset
-        asset = db.query(Asset).filter(Asset.assigned_user_id == current_user.id).first()
-        if asset:
-            query = query.filter(Alert.asset_id == asset.id)
+        user_assets = db.query(Asset).filter(Asset.assigned_user_id == current_user.id).all()
+        if user_assets:
+            query = query.filter(Alert.asset_id.in_([a.id for a in user_assets]))
         else:
             return []
     return query.order_by(Alert.created_at.desc()).all()

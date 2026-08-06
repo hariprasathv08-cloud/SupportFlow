@@ -23,7 +23,7 @@ async def run_diagnostics(
         if not asset:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No monitored endpoints connected. Install the endpoint agent to perform diagnostics."
+                detail="No monitored endpoint connected. Install the endpoint agent to perform diagnostics."
             )
         target_device_id = asset.id
     else:
@@ -33,13 +33,10 @@ async def run_diagnostics(
                 raise HTTPException(status_code=404, detail="Device not found")
             target_device_id = device_id
         else:
-            asset = db.query(Asset).first()
-            if not asset:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="No monitored endpoints connected."
-                )
-            target_device_id = asset.id
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No monitored endpoint connected. Please specify a device ID."
+            )
 
     async def ws_callback(packet: dict):
         await manager.broadcast(packet)

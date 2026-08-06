@@ -174,7 +174,7 @@ export default function SoftwareInventory() {
                       <Server className="h-8 w-8 text-slate-400 dark:text-slate-600 mb-3 animate-pulse" />
                       <p className="font-bold text-sm text-slate-800 dark:text-slate-200">No software discovered.</p>
                       <p className="text-[11px] text-slate-450 mt-1 leading-relaxed">
-                        No monitored endpoints connected. Please install the monitoring agent on a machine by running the lightweight <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-primary">agent.py</code> script to sync its installed programs index.
+                        No monitored endpoint connected. Please install the monitoring agent on a machine by running the lightweight <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-primary">agent.py</code> script to sync its installed programs index.
                       </p>
                     </div>
                   </td>

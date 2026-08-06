@@ -183,10 +183,9 @@ export function useWebSocket(selectedDeviceId: number | null = null) {
   }, []);
 
   // Helpers to get metrics for the selected device
-  const currentKey = selectedDeviceId || 0;
-  const metrics = devicesMetrics[currentKey] || null;
-  const cpuHistory = histories[currentKey]?.cpu || [];
-  const ramHistory = histories[currentKey]?.ram || [];
+  const metrics = selectedDeviceId ? (devicesMetrics[selectedDeviceId] || null) : null;
+  const cpuHistory = selectedDeviceId ? (histories[selectedDeviceId]?.cpu || []) : [];
+  const ramHistory = selectedDeviceId ? (histories[selectedDeviceId]?.ram || []) : [];
 
   return { 
     metrics, 

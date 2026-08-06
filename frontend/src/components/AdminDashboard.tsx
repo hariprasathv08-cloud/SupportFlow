@@ -237,7 +237,7 @@ export default function AdminDashboard() {
       ) : totalDevices === 0 ? (
         <div className="py-24 px-4 text-center bg-slate-900/60 border border-slate-800 rounded-xl">
           <Server className="h-12 w-12 text-slate-700 mx-auto mb-4 animate-pulse" />
-          <h2 className="text-base font-bold text-white">No monitoring agents connected.</h2>
+          <h2 className="text-base font-bold text-white">No monitored endpoint connected.</h2>
           <p className="text-xs text-slate-500 mt-2 max-w-md mx-auto leading-relaxed">
             There are currently no machines connected to SupportFlow. Install or start the lightweight client-side daemon on your hosts to collect telemetry.
           </p>

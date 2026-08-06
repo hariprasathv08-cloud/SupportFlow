@@ -303,12 +303,15 @@ def collect_telemetry() -> Dict[str, Any]:
     hw = discover_hardware_assets()
     
     payload = {
+        "device_uuid": get_or_create_uuid(),
         "uuid": get_or_create_uuid(),
         "hostname": socket.gethostname(),
         "ip_address": ip,
         "mac_address": mac,
+        "operating_system": platform.system(),
         "os": platform.system(),
         "kernel": platform.release(),
+        "username": getpass.getuser(),
         "current_user": getpass.getuser(),
         "uptime": round(get_uptime(), 1),
         "cpu_usage": cpu,

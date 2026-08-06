@@ -15,6 +15,9 @@ from app.core.dependencies import get_current_active_user
 
 router = APIRouter()
 
+def is_admin(user) -> bool:
+    return user.role in ["Admin", "Super Administrator", "Administrator"]
+
 async def process_device_alert(db: Session, asset_id: int, category: str, is_triggered: bool, message: str, severity: str):
     # Find existing unresolved alert for this specific asset
     alert = db.query(Alert).filter(
@@ -22,6 +25,18 @@ async def process_device_alert(db: Session, asset_id: int, category: str, is_tri
         Alert.category == category,
         Alert.resolved == False
     ).first()
+
+    # Get asset to know the assigned user
+    asset = db.query(Asset).filter(Asset.id == asset_id).first()
+    assigned_user_id = asset.assigned_user_id if asset else None
+
+    # Helper function to send alert to allowed users
+    async def send_alert_to_allowed(msg_packet: dict):
+        from app.models.user import User
+        active_users = db.query(User).filter(User.is_active == True).all()
+        for u in active_users:
+            if is_admin(u) or u.id == assigned_user_id:
+                await manager.send_to_user(u.id, msg_packet)
 
     if is_triggered:
         if not alert:
@@ -37,7 +52,7 @@ async def process_device_alert(db: Session, asset_id: int, category: str, is_tri
             db.refresh(new_alert)
 
             # Broadcast new alert
-            await manager.broadcast({
+            await send_alert_to_allowed({
                 "type": "new_alert",
                 "alert": {
                     "id": new_alert.id,
@@ -56,7 +71,7 @@ async def process_device_alert(db: Session, asset_id: int, category: str, is_tri
             db.commit()
 
             # Broadcast resolved alert
-            await manager.broadcast({
+            await send_alert_to_allowed({
                 "type": "alert_resolved",
                 "alert_id": alert.id,
                 "asset_id": asset_id,
@@ -106,19 +121,20 @@ def calculate_device_health(payload: TelemetryPayload) -> int:
 @router.post("/telemetry", response_model=TelemetryResponse)
 async def post_telemetry(payload: TelemetryPayload, db: Session = Depends(get_db)):
     # 1. Fetch or create Asset
-    asset = db.query(Asset).filter(Asset.uuid == payload.uuid).first()
+    uuid_val = payload.device_uuid or payload.uuid
+    asset = db.query(Asset).filter(Asset.uuid == uuid_val).first()
     if not asset:
         # Check by serial_number fallback to prevent duplicate physical node creation
         if payload.serial_number:
             asset = db.query(Asset).filter(Asset.serial_number == payload.serial_number).first()
             
         if not asset:
-            asset_tag_str = f"HDX-{payload.uuid[:8].upper()}" if payload.uuid else f"HDX-{str(random.randint(100000, 999999))}"
+            asset_tag_str = f"HDX-{uuid_val[:8].upper()}" if uuid_val else f"HDX-{str(random.randint(100000, 999999))}"
             asset = Asset(
-                uuid=payload.uuid,
+                uuid=uuid_val,
                 asset_tag=asset_tag_str,
                 hostname=payload.hostname,
-                operating_system=payload.os,
+                operating_system=payload.operating_system or payload.os,
                 type=payload.type or "Workstation"
             )
             db.add(asset)
@@ -129,19 +145,20 @@ async def post_telemetry(payload: TelemetryPayload, db: Session = Depends(get_db
     asset.hostname = payload.hostname
     asset.ip_address = payload.ip_address
     asset.mac_address = payload.mac_address
-    asset.operating_system = payload.os
+    asset.operating_system = payload.operating_system or payload.os
     asset.os_version = payload.kernel
-    asset.current_user = payload.current_user
+    asset.current_user = payload.username or payload.current_user
     asset.uptime = payload.uptime
     asset.status = "Online"
     asset.last_seen = datetime.utcnow()
     
     # Automatically map asset to User if unassigned
-    if not asset.assigned_user_id and payload.current_user:
+    username_val = payload.username or payload.current_user
+    if not asset.assigned_user_id and username_val:
         from app.models.user import User
         linked_user = db.query(User).filter(
-            (User.username == payload.current_user) | 
-            (User.email.like(f"{payload.current_user}@%"))
+            (User.username == username_val) | 
+            (User.email.like(f"{username_val}@%"))
         ).first()
         if linked_user:
             asset.assigned_user_id = linked_user.id
@@ -220,12 +237,12 @@ async def post_telemetry(payload: TelemetryPayload, db: Session = Depends(get_db
             "Warning"
         )
 
-    # 5. Broadcast to connected browser clients
+    # 5. Broadcast to connected browser clients based on user visibility
     open_tickets = db.query(Ticket).filter(Ticket.status != "Resolved").count()
     resolved_tickets = db.query(Ticket).filter(Ticket.status == "Resolved").count()
     active_alerts = db.query(Alert).filter(Alert.resolved == False).count()
 
-    await manager.broadcast({
+    msg = {
         "type": "metrics_update",
         "timestamp": datetime.now().isoformat(),
         "device_id": asset.id,
@@ -246,13 +263,19 @@ async def post_telemetry(payload: TelemetryPayload, db: Session = Depends(get_db
             "critical_alerts_count": active_alerts,
             "health_score": asset.health_score
         }
-    })
+    }
+
+    from app.models.user import User
+    active_users = db.query(User).filter(User.is_active == True).all()
+    for u in active_users:
+        if is_admin(u) or asset.assigned_user_id == u.id:
+            await manager.send_to_user(u.id, msg)
 
     return telemetry
 
 @router.get("/devices", response_model=List[DeviceResponse])
 def get_devices(db: Session = Depends(get_db), current_user=Depends(get_current_active_user)):
-    if current_user.role == "Viewer":
+    if not is_admin(current_user):
         return db.query(Asset).filter(Asset.assigned_user_id == current_user.id).all()
     return db.query(Asset).order_by(Asset.last_seen.desc()).all()
 
@@ -261,7 +284,7 @@ def get_device(device_id: int, db: Session = Depends(get_db), current_user=Depen
     asset = db.query(Asset).filter(Asset.id == device_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Device not found")
-    if current_user.role == "Viewer" and asset.assigned_user_id != current_user.id:
+    if not is_admin(current_user) and asset.assigned_user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to access this device details")
     return asset
 
@@ -270,7 +293,7 @@ def get_telemetry_history(device_id: int, db: Session = Depends(get_db), current
     asset = db.query(Asset).filter(Asset.id == device_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Device not found")
-    if current_user.role == "Viewer" and asset.assigned_user_id != current_user.id:
+    if not is_admin(current_user) and asset.assigned_user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to access this device telemetry")
     return db.query(Telemetry).filter(Telemetry.asset_id == device_id).order_by(Telemetry.created_at.desc()).limit(30).all()[::-1]
 
@@ -279,7 +302,7 @@ def get_latest_telemetry(device_id: int, db: Session = Depends(get_db), current_
     asset = db.query(Asset).filter(Asset.id == device_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Device not found")
-    if current_user.role == "Viewer" and asset.assigned_user_id != current_user.id:
+    if not is_admin(current_user) and asset.assigned_user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to access this device telemetry")
     tel = db.query(Telemetry).filter(Telemetry.asset_id == device_id).order_by(Telemetry.created_at.desc()).first()
     if not tel:
