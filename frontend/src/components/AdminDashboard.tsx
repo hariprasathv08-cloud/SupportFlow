@@ -47,6 +47,47 @@ export default function AdminDashboard() {
   const queryClient = useQueryClient();
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | null>(null);
 
+  const role = localStorage.getItem("role") || "Viewer";
+  
+  const getDashboardTitle = () => {
+    switch (role) {
+      case "SUPER_ADMIN":
+        return "Enterprise ITSM Admin Console";
+      case "ORGANIZATION_ADMIN":
+        return "Tenant Administrator Console";
+      case "IT_ADMIN":
+        return "IT Operations Command Dashboard";
+      case "HR_ADMIN":
+        return "HR Directory & Device Health Portal";
+      case "VIEWER":
+        return "Systems Telemetry Dashboard (Read-Only)";
+      default:
+        return "Enterprise Operations Dashboard";
+    }
+  };
+
+  const getDashboardDesc = () => {
+    switch (role) {
+      case "SUPER_ADMIN":
+        return "Global control panel for tenant directory, security audit trails, and agent telemetry.";
+      case "ORGANIZATION_ADMIN":
+        return "Organization-scoped metrics, department structures, and authorized endpoints.";
+      case "IT_ADMIN":
+        return "Detailed real-time diagnostics, performance logs, and command execution controls.";
+      case "HR_ADMIN":
+        return "View organizational staff directory, department assets, and create support incidents.";
+      case "VIEWER":
+        return "Read-only view of infrastructure health, network metrics, and active alert lists.";
+      default:
+        return "IT infrastructure monitoring and service ticketing center.";
+    }
+  };
+
+  const canManageUsers = role === "SUPER_ADMIN" || role === "ORGANIZATION_ADMIN";
+  const canRestartAgent = role === "SUPER_ADMIN" || role === "ORGANIZATION_ADMIN" || role === "IT_ADMIN";
+  const canAssignTickets = role === "SUPER_ADMIN" || role === "ORGANIZATION_ADMIN" || role === "IT_ADMIN";
+  const canViewAudits = role === "SUPER_ADMIN" || role === "ORGANIZATION_ADMIN";
+
   // Parallel asynchronous widget fetching using React Query
   const { data: devices = [], isLoading: isLoadingDevices } = useQuery({
     queryKey: ["devices"],
@@ -64,7 +105,7 @@ export default function AdminDashboard() {
     queryKey: ["administrators"],
     queryFn: async () => {
       const allUsers: any = await api.listUsers();
-      return allUsers.filter((u: any) => u.role === "Administrator" || u.role === "Super Administrator" || u.role === "Admin");
+      return allUsers.filter((u: any) => u.role === "SUPER_ADMIN" || u.role === "ORGANIZATION_ADMIN" || u.role === "IT_ADMIN");
     },
     staleTime: 30000,
   });
@@ -193,10 +234,10 @@ export default function AdminDashboard() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-white">
-            IT Operations Dashboard
+            {getDashboardTitle()}
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Complete visibility and control over the IT enterprise environment.
+            {getDashboardDesc()}
           </p>
         </div>
 
@@ -437,16 +478,22 @@ export default function AdminDashboard() {
                           <p className="text-[9px] text-slate-500 mt-1 font-mono">#TIC-{1000 + ticket.id} • Priority: <span className="text-slate-400 font-bold">{ticket.priority}</span></p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                           <select
-                            value={ticket.assigned_to_id || ""}
-                            onChange={(e) => handleQuickReassign(ticket.id, e.target.value)}
-                            className="bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-[10px] text-slate-300 focus:outline-none"
-                          >
-                            <option value="">Unassigned</option>
-                            {administrators.map((t: any) => (
-                              <option key={t.id} value={t.id}>{t.full_name}</option>
-                            ))}
-                          </select>
+                          {canAssignTickets ? (
+                            <select
+                              value={ticket.assigned_to_id || ""}
+                              onChange={(e) => handleQuickReassign(ticket.id, e.target.value)}
+                              className="bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-[10px] text-slate-300 focus:outline-none"
+                            >
+                              <option value="">Unassigned</option>
+                              {administrators.map((t: any) => (
+                                <option key={t.id} value={t.id}>{t.full_name}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 font-semibold italic">
+                              {ticket.assigned_to?.full_name || "Unassigned"}
+                            </span>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -461,40 +508,42 @@ export default function AdminDashboard() {
             </div>
 
             {/* Audit Log Stream (Recent Activities) */}
-            <div className="bg-slate-900/60 border border-slate-800/80 rounded-card p-5 shadow-soft flex flex-col">
-              <div className="flex justify-between items-center border-b border-slate-800 pb-3 mb-4">
-                <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                  <UserIcon className="h-4.5 w-4.5 text-primary" /> Recent Activities
-                </h2>
-                <Link to="/users" className="text-xs text-primary hover:underline font-semibold">User Directory</Link>
-              </div>
+            {canViewAudits && (
+              <div className="bg-slate-900/60 border border-slate-800/80 rounded-card p-5 shadow-soft flex flex-col">
+                <div className="flex justify-between items-center border-b border-slate-800 pb-3 mb-4">
+                  <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                    <UserIcon className="h-4.5 w-4.5 text-primary" /> Recent Activities
+                  </h2>
+                  <Link to="/users" className="text-xs text-primary hover:underline font-semibold">User Directory</Link>
+                </div>
 
-              <div className="space-y-3 max-h-64 overflow-y-auto scrollbar-thin">
-                {isLoadingAudits ? (
-                  <>
-                    <div className="h-12 bg-slate-850/50 rounded-xl animate-pulse" />
-                    <div className="h-12 bg-slate-850/50 rounded-xl animate-pulse" />
-                  </>
-                ) : (
-                  <>
-                    {audits.map((log: any) => (
-                      <div key={log.id} className="p-3 bg-slate-955 border border-slate-850 rounded-xl text-xs space-y-1">
-                        <div className="flex justify-between">
-                          <span className="font-bold text-primary text-[10px] uppercase">{log.action}</span>
-                          <span className="font-mono text-slate-550 text-[9px]">{new Date(log.created_at).toLocaleTimeString()}</span>
+                <div className="space-y-3 max-h-64 overflow-y-auto scrollbar-thin">
+                  {isLoadingAudits ? (
+                    <>
+                      <div className="h-12 bg-slate-850/50 rounded-xl animate-pulse" />
+                      <div className="h-12 bg-slate-850/50 rounded-xl animate-pulse" />
+                    </>
+                  ) : (
+                    <>
+                      {audits.map((log: any) => (
+                        <div key={log.id} className="p-3 bg-slate-955 border border-slate-850 rounded-xl text-xs space-y-1">
+                          <div className="flex justify-between">
+                            <span className="font-bold text-primary text-[10px] uppercase">{log.action}</span>
+                            <span className="font-mono text-slate-550 text-[9px]">{new Date(log.created_at).toLocaleTimeString()}</span>
+                          </div>
+                          <p className="text-slate-350 text-[10px] leading-relaxed">{log.details}</p>
                         </div>
-                        <p className="text-slate-350 text-[10px] leading-relaxed">{log.details}</p>
-                      </div>
-                    ))}
-                    {audits.length === 0 && (
-                      <div className="p-8 text-center text-slate-500 text-xs">
-                        No system audits logged in directory.
-                      </div>
-                    )}
-                  </>
-                )}
+                      ))}
+                      {audits.length === 0 && (
+                        <div className="p-8 text-center text-slate-500 text-xs">
+                          No system audits logged in directory.
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
           </div>
 
@@ -505,31 +554,35 @@ export default function AdminDashboard() {
             </h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <button
-                onClick={() => navigate("/users")}
-                className="p-4 bg-slate-955 hover:bg-slate-850 border border-slate-800/85 hover:border-slate-850 rounded-xl flex items-center gap-3 transition-all text-left"
-              >
-                <div className="h-10 w-10 bg-primary/10 rounded-lg flex items-center justify-center text-primary shrink-0">
-                  <UserPlus className="h-5 w-5" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-white">Create User</h4>
-                  <p className="text-[10px] text-slate-550 mt-0.5">Add staff credentials</p>
-                </div>
-              </button>
+              {canManageUsers && (
+                <button
+                  onClick={() => navigate("/users")}
+                  className="p-4 bg-slate-955 hover:bg-slate-850 border border-slate-800/85 hover:border-slate-850 rounded-xl flex items-center gap-3 transition-all text-left"
+                >
+                  <div className="h-10 w-10 bg-primary/10 rounded-lg flex items-center justify-center text-primary shrink-0">
+                    <UserPlus className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white">Create User</h4>
+                    <p className="text-[10px] text-slate-550 mt-0.5">Add staff credentials</p>
+                  </div>
+                </button>
+              )}
 
-              <button
-                onClick={handleRestartAgent}
-                className="p-4 bg-slate-955 hover:bg-slate-850 border border-slate-800/85 hover:border-slate-850 rounded-xl flex items-center gap-3 transition-all text-left"
-              >
-                <div className="h-10 w-10 bg-primary/10 rounded-lg flex items-center justify-center text-primary shrink-0">
-                  <RefreshCw className="h-5 w-5" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-white">Restart Agent</h4>
-                  <p className="text-[10px] text-slate-550 mt-0.5">Reboot telemetry services</p>
-                </div>
-              </button>
+              {canRestartAgent && (
+                <button
+                  onClick={handleRestartAgent}
+                  className="p-4 bg-slate-955 hover:bg-slate-850 border border-slate-800/85 hover:border-slate-850 rounded-xl flex items-center gap-3 transition-all text-left"
+                >
+                  <div className="h-10 w-10 bg-primary/10 rounded-lg flex items-center justify-center text-primary shrink-0">
+                    <RefreshCw className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white">Restart Agent</h4>
+                    <p className="text-[10px] text-slate-550 mt-0.5">Reboot telemetry services</p>
+                  </div>
+                </button>
+              )}
 
               <button
                 onClick={() => navigate("/reports")}

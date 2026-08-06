@@ -72,15 +72,20 @@ class User(Base):
     organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
     department_id = Column(Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True)
 
+    role = Column(String, default="EMPLOYEE", nullable=True)
+    device_uuid = Column(String, nullable=True)
+    email_verified = Column(Boolean, default=False, nullable=False)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    password_hash = Column(String, nullable=True)
+    failed_login_attempts = Column(Integer, default=0, nullable=False)
+    lockout_until = Column(DateTime, nullable=True)
+    force_password_change = Column(Boolean, default=False, nullable=False)
+
     organization = relationship("Organization")
     department_relation = relationship("Department")
 
     # Direct custom permissions override
     custom_permissions = relationship("Permission", secondary=user_permissions, lazy="joined")
-
-    @property
-    def role(self) -> str:
-        return self.role_obj.name if self.role_obj else "Viewer"
 
     @property
     def role_detail(self):

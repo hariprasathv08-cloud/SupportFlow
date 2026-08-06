@@ -40,32 +40,80 @@ export default function Sidebar({ role, userName }: SidebarProps) {
     updatePreference("sidebar_state", val ? "collapsed" : "expanded");
   };
 
-  const isViewer = role === "EMPLOYEE";
-  const isAdmin = role === "SUPER_ADMIN" || role === "ORGANIZATION_ADMIN" || role === "IT_ADMIN";
-
   const menuItems = [
+    // Dashboard: all roles
     { name: "Dashboard", path: "/", icon: LayoutDashboard },
-    ...(!isViewer ? [
-      { name: "System Health", path: "/system-health", icon: Activity },
-      { name: "Network Monitor", path: "/network-monitor", icon: Network },
-      { name: "PC Health Check", path: "/pc-health", icon: HeartPulse },
-      { name: "Assets", path: "/assets", icon: Database },
-      { name: "Software Inventory", path: "/software", icon: Layers },
+    
+    // System Health: SUPER_ADMIN, ORGANIZATION_ADMIN, IT_ADMIN, VIEWER
+    ...(role === "SUPER_ADMIN" || role === "ORGANIZATION_ADMIN" || role === "IT_ADMIN" || role === "VIEWER" ? [
+      { name: "System Health", path: "/system-health", icon: Activity }
     ] : []),
-    { name: "ITSM Tickets", path: "/tickets", icon: Ticket },
-    ...(!isViewer ? [
-      { name: "Reports", path: "/reports", icon: FileText },
-      { name: "Real-time Alerts", path: "/alerts", icon: AlertTriangle },
+
+    // Network Monitor: SUPER_ADMIN, ORGANIZATION_ADMIN, IT_ADMIN, VIEWER (HR_ADMIN is blocked!)
+    ...(role === "SUPER_ADMIN" || role === "ORGANIZATION_ADMIN" || role === "IT_ADMIN" || role === "VIEWER" ? [
+      { name: "Network Monitor", path: "/network-monitor", icon: Network }
     ] : []),
-    ...(isAdmin ? [{ name: "Users & Roles", path: "/users", icon: Users }] : []),
-    ...(role === "SUPER_ADMIN" ? [{ name: "Organizations", path: "/organizations", icon: Building }] : []),
-    ...(role === "SUPER_ADMIN" || role === "ORGANIZATION_ADMIN" ? [{ name: "Departments", path: "/departments", icon: Briefcase }] : []),
-    ...(role === "SUPER_ADMIN" || role === "ORGANIZATION_ADMIN" || role === "IT_ADMIN" ? [{ name: "Enrollment Requests", path: "/agent-enrollments", icon: UserCheck }] : []),
+
+    // PC Health Check (Diagnostics): SUPER_ADMIN, ORGANIZATION_ADMIN, IT_ADMIN (HR_ADMIN, VIEWER, EMPLOYEE blocked!)
+    ...(role === "SUPER_ADMIN" || role === "ORGANIZATION_ADMIN" || role === "IT_ADMIN" ? [
+      { name: "PC Health Check", path: "/pc-health", icon: HeartPulse }
+    ] : []),
+
+    // Assets: SUPER_ADMIN, ORGANIZATION_ADMIN, IT_ADMIN, HR_ADMIN, VIEWER
+    ...(role !== "EMPLOYEE" ? [
+      { name: "Assets", path: "/assets", icon: Database }
+    ] : []),
+
+    // Software Inventory: SUPER_ADMIN, ORGANIZATION_ADMIN, IT_ADMIN
+    ...(role === "SUPER_ADMIN" || role === "ORGANIZATION_ADMIN" || role === "IT_ADMIN" ? [
+      { name: "Software Inventory", path: "/software", icon: Layers }
+    ] : []),
+
+    // ITSM Tickets: all roles except VIEWER
+    ...(role !== "VIEWER" ? [
+      { name: "ITSM Tickets", path: "/tickets", icon: Ticket }
+    ] : []),
+
+    // Reports: SUPER_ADMIN, ORGANIZATION_ADMIN, IT_ADMIN, HR_ADMIN, VIEWER
+    ...(role !== "EMPLOYEE" ? [
+      { name: "Reports", path: "/reports", icon: FileText }
+    ] : []),
+
+    // Real-time Alerts: SUPER_ADMIN, ORGANIZATION_ADMIN, IT_ADMIN, VIEWER
+    ...(role === "SUPER_ADMIN" || role === "ORGANIZATION_ADMIN" || role === "IT_ADMIN" || role === "VIEWER" ? [
+      { name: "Real-time Alerts", path: "/alerts", icon: AlertTriangle }
+    ] : []),
+
+    // Users & Roles: SUPER_ADMIN, ORGANIZATION_ADMIN, HR_ADMIN
+    ...(role === "SUPER_ADMIN" || role === "ORGANIZATION_ADMIN" || role === "HR_ADMIN" ? [
+      { name: "Users & Roles", path: "/users", icon: Users }
+    ] : []),
+
+    // Organizations: SUPER_ADMIN
+    ...(role === "SUPER_ADMIN" ? [
+      { name: "Organizations", path: "/organizations", icon: Building }
+    ] : []),
+
+    // Departments: SUPER_ADMIN, ORGANIZATION_ADMIN
+    ...(role === "SUPER_ADMIN" || role === "ORGANIZATION_ADMIN" ? [
+      { name: "Departments", path: "/departments", icon: Briefcase }
+    ] : []),
+
+    // Enrollment Requests: SUPER_ADMIN, ORGANIZATION_ADMIN, IT_ADMIN
+    ...(role === "SUPER_ADMIN" || role === "ORGANIZATION_ADMIN" || role === "IT_ADMIN" ? [
+      { name: "Enrollment Requests", path: "/agent-enrollments", icon: UserCheck }
+    ] : []),
+
+    // Audit Logs and Session Logs: SUPER_ADMIN, ORGANIZATION_ADMIN
     ...(role === "SUPER_ADMIN" || role === "ORGANIZATION_ADMIN" ? [
       { name: "Audit Logs", path: "/audit-logs", icon: FileSpreadsheet },
       { name: "Session Logs", path: "/session-logs", icon: History }
     ] : []),
-    { name: "Settings", path: "/settings", icon: Settings },
+
+    // Settings: SUPER_ADMIN, ORGANIZATION_ADMIN, IT_ADMIN, HR_ADMIN, EMPLOYEE (VIEWER restricted!)
+    ...(role !== "VIEWER" ? [
+      { name: "Settings", path: "/settings", icon: Settings }
+    ] : []),
   ];
 
   return (

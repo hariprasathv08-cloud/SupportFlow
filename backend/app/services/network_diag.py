@@ -9,16 +9,81 @@ from concurrent.futures import ThreadPoolExecutor
 IS_WINDOWS = sys.platform == 'win32'
 
 def execute_ping(host: str, count: int = 4) -> Dict[str, Any]:
-    if IS_WINDOWS:
-        cmd = ["ping", "-n", str(count), host]
-    else:
-        cmd = ["ping", "-c", str(count), host]
-
-    start_time = time.time()
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-        output = res.stdout
-    except subprocess.TimeoutExpired:
+        if IS_WINDOWS:
+            cmd = ["ping", "-n", str(count), host]
+        else:
+            cmd = ["ping", "-c", str(count), host]
+
+        start_time = time.time()
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            output = res.stdout or res.stderr
+            if "not permitted" in output.lower() or "permission denied" in output.lower() or res.returncode == 127:
+                raise PermissionError("Operation not permitted")
+        except subprocess.TimeoutExpired:
+            return {
+                "host": host,
+                "packets_sent": count,
+                "packets_received": 0,
+                "packet_loss_percent": 100.0,
+                "min_rtt_ms": None,
+                "avg_rtt_ms": None,
+                "max_rtt_ms": None,
+                "status": "Offline",
+                "output": "Ping query timed out."
+            }
+
+        # Parser definitions
+        packets_sent = count
+        packets_received = 0
+        packet_loss_percent = 100.0
+        min_rtt = None
+        avg_rtt = None
+        max_rtt = None
+
+        if IS_WINDOWS:
+            # Look for sent/received
+            sent_recv_match = re.search(r"Sent = (\d+), Received = (\d+), Lost = (\d+)", output)
+            if sent_recv_match:
+                packets_sent = int(sent_recv_match.group(1))
+                packets_received = int(sent_recv_match.group(2))
+                packet_loss_percent = (packets_sent - packets_received) / packets_sent * 100.0
+            
+            # Look for min/avg/max
+            rtt_match = re.search(r"Minimum = (\d+)ms, Maximum = (\d+)ms, Average = (\d+)ms", output)
+            if rtt_match:
+                min_rtt = float(rtt_match.group(1))
+                max_rtt = float(rtt_match.group(2))
+                avg_rtt = float(rtt_match.group(3))
+        else:
+            # Linux parser
+            sent_recv_match = re.search(r"(\d+) packets transmitted, (\d+) received, (\d+)% packet loss", output)
+            if sent_recv_match:
+                packets_sent = int(sent_recv_match.group(1))
+                packets_received = int(sent_recv_match.group(2))
+                packet_loss_percent = float(sent_recv_match.group(3))
+            
+            rtt_match = re.search(r"rtt min/avg/max/mdev = ([\d\.]+)/([\d\.]+)/([\d\.]+)/", output)
+            if rtt_match:
+                min_rtt = float(rtt_match.group(1))
+                avg_rtt = float(rtt_match.group(2))
+                max_rtt = float(rtt_match.group(3))
+
+        status = "Online" if packets_received > 0 else "Offline"
+
+        return {
+            "host": host,
+            "packets_sent": packets_sent,
+            "packets_received": packets_received,
+            "packet_loss_percent": round(packet_loss_percent, 1),
+            "min_rtt_ms": min_rtt,
+            "avg_rtt_ms": avg_rtt,
+            "max_rtt_ms": max_rtt,
+            "status": status,
+            "output": output
+        }
+    except Exception:
         return {
             "host": host,
             "packets_sent": count,
@@ -27,138 +92,97 @@ def execute_ping(host: str, count: int = 4) -> Dict[str, Any]:
             "min_rtt_ms": None,
             "avg_rtt_ms": None,
             "max_rtt_ms": None,
-            "status": "Offline",
-            "output": "Ping query timed out."
+            "status": "Error",
+            "output": "Operation unavailable on hosted server"
         }
 
-    # Parser definitions
-    packets_sent = count
-    packets_received = 0
-    packet_loss_percent = 100.0
-    min_rtt = None
-    avg_rtt = None
-    max_rtt = None
-
-    if IS_WINDOWS:
-        # Look for sent/received
-        sent_recv_match = re.search(r"Sent = (\d+), Received = (\d+), Lost = (\d+)", output)
-        if sent_recv_match:
-            packets_sent = int(sent_recv_match.group(1))
-            packets_received = int(sent_recv_match.group(2))
-            packet_loss_percent = (packets_sent - packets_received) / packets_sent * 100.0
-        
-        # Look for min/avg/max
-        rtt_match = re.search(r"Minimum = (\d+)ms, Maximum = (\d+)ms, Average = (\d+)ms", output)
-        if rtt_match:
-            min_rtt = float(rtt_match.group(1))
-            max_rtt = float(rtt_match.group(2))
-            avg_rtt = float(rtt_match.group(3))
-    else:
-        # Linux parser
-        sent_recv_match = re.search(r"(\d+) packets transmitted, (\d+) received, (\d+)% packet loss", output)
-        if sent_recv_match:
-            packets_sent = int(sent_recv_match.group(1))
-            packets_received = int(sent_recv_match.group(2))
-            packet_loss_percent = float(sent_recv_match.group(3))
-        
-        rtt_match = re.search(r"rtt min/avg/max/mdev = ([\d\.]+)/([\d\.]+)/([\d\.]+)/", output)
-        if rtt_match:
-            min_rtt = float(rtt_match.group(1))
-            avg_rtt = float(rtt_match.group(2))
-            max_rtt = float(rtt_match.group(3))
-
-    status = "Online" if packets_received > 0 else "Offline"
-
-    return {
-        "host": host,
-        "packets_sent": packets_sent,
-        "packets_received": packets_received,
-        "packet_loss_percent": round(packet_loss_percent, 1),
-        "min_rtt_ms": min_rtt,
-        "avg_rtt_ms": avg_rtt,
-        "max_rtt_ms": max_rtt,
-        "status": status,
-        "output": output
-    }
-
 def execute_traceroute(host: str) -> Dict[str, Any]:
-    if IS_WINDOWS:
-        cmd = ["tracert", "-d", "-h", "15", host]  # 15 hops max for speed
-    else:
-        cmd = ["traceroute", "-n", "-m", "15", host]
-
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        output = res.stdout
-    except subprocess.TimeoutExpired:
+        if IS_WINDOWS:
+            cmd = ["tracert", "-d", "-h", "15", host]  # 15 hops max for speed
+        else:
+            cmd = ["traceroute", "-n", "-m", "15", host]
+
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            output = res.stdout or res.stderr
+            if "not permitted" in output.lower() or "permission denied" in output.lower() or res.returncode == 127:
+                raise PermissionError("Operation not permitted")
+        except subprocess.TimeoutExpired:
+            return {
+                "host": host,
+                "hops": [],
+                "output": "Traceroute timed out."
+            }
+
+        hops = []
+        lines = output.splitlines()
+
+        for line in lines:
+            line = line.strip()
+            # Parse hops
+            if IS_WINDOWS:
+                # Format:  1    <1 ms    <1 ms    <1 ms  192.168.1.1
+                match = re.match(r"^\s*(\d+)\s+((?:<\s*)?\d+\s*ms|\*)\s+((?:<\s*)?\d+\s*ms|\*)\s+((?:<\s*)?\d+\s*ms|\*)\s+(.+)$", line)
+                if match:
+                    hop_num = int(match.group(1))
+                    ip = match.group(5).strip()
+                    # Use average / formatted times
+                    times = f"{match.group(2).strip()} | {match.group(3).strip()} | {match.group(4).strip()}"
+                    
+                    # Resolve name
+                    name = "Unknown"
+                    if "request timed out" in ip.lower():
+                        ip = "*"
+                        name = "Request timed out."
+                    elif "[" in ip and "]" in ip:
+                        ip_match = re.search(r"\[([\d\.\:]+)\]", ip)
+                        if ip_match:
+                            name = ip.split("[")[0].strip()
+                            ip = ip_match.group(1)
+                    else:
+                        name = ip
+                        if ip != "*" and not re.match(r"^\*$", ip):
+                            try:
+                                name = socket.gethostbyaddr(ip)[0]
+                            except Exception:
+                                name = ip
+                    
+                    hops.append({
+                        "hop_number": hop_num,
+                        "rtt_ms": times,
+                        "ip_address": ip,
+                        "hostname": name
+                    })
+            else:
+                # Linux: 1  192.168.1.1  0.421 ms
+                match = re.match(r"^\s*(\d+)\s+([\d\.\:]+|[\w\.\-]+|\*)\s+([\d\.]+)\s*ms", line)
+                if match:
+                    hop_num = int(match.group(1))
+                    ip = match.group(2)
+                    rtt = f"{match.group(3)} ms"
+                    try:
+                        name = socket.gethostbyaddr(ip)[0]
+                    except Exception:
+                        name = ip
+                    hops.append({
+                        "hop_number": hop_num,
+                        "rtt_ms": rtt,
+                        "ip_address": ip,
+                        "hostname": name
+                    })
+
+        return {
+            "host": host,
+            "hops": hops,
+            "output": output
+        }
+    except Exception:
         return {
             "host": host,
             "hops": [],
-            "output": "Traceroute timed out."
+            "output": "Operation unavailable on hosted server"
         }
-
-    hops = []
-    lines = output.splitlines()
-
-    for line in lines:
-        line = line.strip()
-        # Parse hops
-        if IS_WINDOWS:
-            # Format:  1    <1 ms    <1 ms    <1 ms  192.168.1.1
-            match = re.match(r"^\s*(\d+)\s+((?:<\s*)?\d+\s*ms|\*)\s+((?:<\s*)?\d+\s*ms|\*)\s+((?:<\s*)?\d+\s*ms|\*)\s+(.+)$", line)
-            if match:
-                hop_num = int(match.group(1))
-                ip = match.group(5).strip()
-                # Use average / formatted times
-                times = f"{match.group(2).strip()} | {match.group(3).strip()} | {match.group(4).strip()}"
-                
-                # Resolve name
-                name = "Unknown"
-                if "request timed out" in ip.lower():
-                    ip = "*"
-                    name = "Request timed out."
-                elif "[" in ip and "]" in ip:
-                    ip_match = re.search(r"\[([\d\.\:]+)\]", ip)
-                    if ip_match:
-                        name = ip.split("[")[0].strip()
-                        ip = ip_match.group(1)
-                else:
-                    name = ip
-                    if ip != "*" and not re.match(r"^\*$", ip):
-                        try:
-                            name = socket.gethostbyaddr(ip)[0]
-                        except Exception:
-                            name = ip
-                
-                hops.append({
-                    "hop_number": hop_num,
-                    "rtt_ms": times,
-                    "ip_address": ip,
-                    "hostname": name
-                })
-        else:
-            # Linux: 1  192.168.1.1  0.421 ms
-            match = re.match(r"^\s*(\d+)\s+([\d\.\:]+|[\w\.\-]+|\*)\s+([\d\.]+)\s*ms", line)
-            if match:
-                hop_num = int(match.group(1))
-                ip = match.group(2)
-                rtt = f"{match.group(3)} ms"
-                try:
-                    name = socket.gethostbyaddr(ip)[0]
-                except Exception:
-                    name = ip
-                hops.append({
-                    "hop_number": hop_num,
-                    "rtt_ms": rtt,
-                    "ip_address": ip,
-                    "hostname": name
-                })
-
-    return {
-        "host": host,
-        "hops": hops,
-        "output": output
-    }
 
 def execute_dns_lookup(host: str) -> Dict[str, Any]:
     start_time = time.time()

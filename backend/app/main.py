@@ -25,29 +25,88 @@ Base.metadata.create_all(bind=engine)
 def seed_database():
     db = SessionLocal()
     try:
-        # Run DB ALTER TABLE migrations first
-        alters = [
-            ("users", "organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL"),
-            ("users", "department_id", "INTEGER REFERENCES departments(id) ON DELETE SET NULL"),
-            ("assets", "organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL"),
-            ("assets", "department_id", "INTEGER REFERENCES departments(id) ON DELETE SET NULL"),
-            ("assets", "approval_status", "VARCHAR DEFAULT 'Pending'"),
-            ("assets", "api_token", "VARCHAR UNIQUE"),
-            ("tickets", "organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL"),
-            ("tickets", "department_id", "INTEGER REFERENCES departments(id) ON DELETE SET NULL"),
-            ("alerts", "organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL"),
-            ("software", "organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL"),
-            ("software_history", "organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL"),
-            ("audit_logs", "organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL"),
-            ("report_tasks", "organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL")
-        ]
-        for table, col, col_type in alters:
-            try:
-                db.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
-                db.commit()
-                print(f"[MIGRATION] Added column {col} to {table} table.")
-            except Exception:
-                db.rollback()
+        # Run DB inspect-based migrations
+        table_alters = {
+            "users": [
+                ("organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL"),
+                ("department_id", "INTEGER REFERENCES departments(id) ON DELETE SET NULL"),
+                ("password_hash", "VARCHAR"),
+                ("role", "VARCHAR DEFAULT 'EMPLOYEE'"),
+                ("device_uuid", "VARCHAR"),
+                ("email_verified", "BOOLEAN DEFAULT FALSE"),
+                ("updated_at", "TIMESTAMP"),
+                ("failed_login_attempts", "INTEGER DEFAULT 0"),
+                ("lockout_until", "TIMESTAMP"),
+                ("force_password_change", "BOOLEAN DEFAULT FALSE")
+            ],
+            "assets": [
+                ("organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL"),
+                ("department_id", "INTEGER REFERENCES departments(id) ON DELETE SET NULL"),
+                ("approval_status", "VARCHAR DEFAULT 'Pending'"),
+                ("api_token", "VARCHAR UNIQUE")
+            ],
+            "tickets": [
+                ("organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL"),
+                ("department_id", "INTEGER REFERENCES departments(id) ON DELETE SET NULL")
+            ],
+            "alerts": [
+                ("organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL")
+            ],
+            "software": [
+                ("organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL")
+            ],
+            "software_history": [
+                ("organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL")
+            ],
+            "audit_logs": [
+                ("organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL")
+            ],
+            "report_tasks": [
+                ("organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL")
+            ]
+        }
+        
+        from sqlalchemy import inspect
+        inspector = inspect(engine)
+        
+        for table_name, alters in table_alters.items():
+            if not inspector.has_table(table_name):
+                continue
+            existing_cols = [c["name"] for c in inspector.get_columns(table_name)]
+            for col_name, col_type in alters:
+                if col_name not in existing_cols:
+                    try:
+                        db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"))
+                        db.commit()
+                        print(f"[MIGRATION] Added column {col_name} to {table_name} table.")
+                    except Exception as e:
+                        db.rollback()
+                        print(f"[MIGRATION] Failed to add column {col_name} to {table_name}: {e}")
+
+        # Purge duplicate users by email and username
+        try:
+            db.execute(text("""
+                DELETE FROM users 
+                WHERE id NOT IN (
+                    SELECT MIN(id) 
+                    FROM users 
+                    GROUP BY email
+                )
+            """))
+            db.commit()
+            db.execute(text("""
+                DELETE FROM users 
+                WHERE username IS NOT NULL AND id NOT IN (
+                    SELECT MIN(id) 
+                    FROM users 
+                    GROUP BY username
+                )
+            """))
+            db.commit()
+            print("[CLEANUP] Purged duplicate user entries.")
+        except Exception as e:
+            db.rollback()
+            print(f"[CLEANUP] Failed to purge duplicates: {e}")
 
         # Seed Organizations
         if db.query(Organization).count() == 0:
@@ -107,6 +166,7 @@ def seed_database():
                 "ORGANIZATION_ADMIN": list(perms_dict.keys()),
                 "IT_ADMIN": ["view_dashboard", "edit_dashboard", "view_tickets", "assign_tickets", "resolve_tickets", "manage_assets", "delete_assets", "view_reports", "generate_reports", "remote_control", "restart_device", "shutdown_device", "manage_alerts"],
                 "HR_ADMIN": ["manage_users", "view_tickets"],
+                "VIEWER": ["view_dashboard", "manage_assets", "view_reports"],
                 "EMPLOYEE": ["view_dashboard", "view_tickets"]
             }
 
@@ -117,31 +177,33 @@ def seed_database():
             db.commit()
 
         # Seed default users
-        acme = db.query(Organization).filter(Organization.name == "Acme Corporation").first()
-        if acme and db.query(User).count() == 0:
+        if db.query(User).count() == 0:
             print("Seeding default users...")
             r_super = db.query(Role).filter(Role.name == "SUPER_ADMIN").first()
-            r_org = db.query(Role).filter(Role.name == "ORGANIZATION_ADMIN").first()
-            r_it = db.query(Role).filter(Role.name == "IT_ADMIN").first()
-            r_hr = db.query(Role).filter(Role.name == "HR_ADMIN").first()
-            r_emp = db.query(Role).filter(Role.name == "EMPLOYEE").first()
 
-            d_it = db.query(Department).filter(Department.name == "IT Support", Department.organization_id == acme.id).first()
-            d_hr = db.query(Department).filter(Department.name == "HR", Department.organization_id == acme.id).first()
-            d_eng = db.query(Department).filter(Department.name == "Engineering", Department.organization_id == acme.id).first()
+            # Read admin password from environment or force change on first login
+            admin_pwd = os.environ.get("SUPPORTFLOW_ADMIN_PASSWORD")
+            force_change = False
+            if not admin_pwd:
+                admin_pwd = "password"
+                force_change = True
 
-            hashed_pw = get_password_hash("password")
-
-            users_to_seed = [
-                User(email="superadmin@supportflow.com", username="superadmin", hashed_password=hashed_pw, full_name="Super Admin", role_id=r_super.id if r_super else None),
-                User(email="orgadmin@supportflow.com", username="orgadmin", hashed_password=hashed_pw, full_name="Acme Org Admin", role_id=r_org.id if r_org else None, organization_id=acme.id),
-                User(email="itadmin@supportflow.com", username="itadmin", hashed_password=hashed_pw, full_name="IT Analyst", role_id=r_it.id if r_it else None, organization_id=acme.id, department_id=d_it.id if d_it else None, department="IT Support"),
-                User(email="hradmin@supportflow.com", username="hradmin", hashed_password=hashed_pw, full_name="HR Specialist", role_id=r_hr.id if r_hr else None, organization_id=acme.id, department_id=d_hr.id if d_hr else None, department="HR"),
-                User(email="employee@supportflow.com", username="employee", hashed_password=hashed_pw, full_name="Engineer User", role_id=r_emp.id if r_emp else None, organization_id=acme.id, department_id=d_eng.id if d_eng else None, department="Engineering")
-            ]
-            for u in users_to_seed:
-                db.add(u)
+            hashed_pw = get_password_hash(admin_pwd)
+            super_user = User(
+                email="superadmin@supportflow.com",
+                username="superadmin",
+                hashed_password=hashed_pw,
+                password_hash=hashed_pw,
+                full_name="Super Admin",
+                role_id=r_super.id if r_super else None,
+                role="SUPER_ADMIN",
+                status="Active",
+                is_active=True,
+                force_password_change=force_change
+            )
+            db.add(super_user)
             db.commit()
+            print(f"[SEED] Seeded single SUPER_ADMIN user. Force password change: {force_change}")
 
     except Exception as e:
         print(f"Error seeding database: {e}")

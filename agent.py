@@ -383,6 +383,26 @@ def main():
     with open(token_file, "r") as f:
         device_token = f.read().strip()
 
+    BUFFER_FILE = os.path.join(os.path.abspath(os.path.dirname(__file__)), ".agent_telemetry_cache")
+
+    def load_buffer() -> List[Dict[str, Any]]:
+        if os.path.exists(BUFFER_FILE):
+            try:
+                with open(BUFFER_FILE, "r") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return []
+
+    def save_buffer(buf: List[Dict[str, Any]]):
+        try:
+            with open(BUFFER_FILE, "w") as f:
+                json.dump(buf[-100:], f)  # Cap at 100 items to avoid excessive size
+        except Exception:
+            pass
+
+    buffer = load_buffer()
+
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] SupportFlow Endpoint Monitoring Agent started.")
     print(f"Agent Device UUID: {get_or_create_uuid()}")
     print(f"Target API Base URL: {API_BASE_URL}")
@@ -394,27 +414,41 @@ def main():
             payload = collect_telemetry()
             print(f"[{datetime.now().strftime('%H:%M:%S')}] Telemetry collected successfully: CPU={payload['cpu_usage']}%, RAM={payload['ram_usage']}%, processes={len(payload['processes'])} active.")
             
-            req = urllib.request.Request(
-                API_URL, 
-                data=json.dumps(payload).encode('utf-8'),
-                headers={
-                    'Content-Type': 'application/json',
-                    'User-Agent': 'SupportFlowAgent/1.0',
-                    'X-Device-Token': device_token
-                }
-            )
+            # Queue the current payload
+            buffer.append(payload)
+            save_buffer(buffer)
             
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] Attempting sync to {API_URL}...")
-            with urllib.request.urlopen(req, timeout=10) as response:
-                if response.status == 200:
-                    resp_data = response.read().decode('utf-8')
-                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Telemetry payload successfully synced. Server response: {resp_data}")
-                else:
-                    print(f"[{datetime.now().strftime('%H:%M:%S')}] WARNING: Backend returned non-200 status code: {response.status}")
+            synced_count = 0
+            while buffer:
+                item = buffer[0]
+                req = urllib.request.Request(
+                    API_URL, 
+                    data=json.dumps(item).encode('utf-8'),
+                    headers={
+                        'Content-Type': 'application/json',
+                        'User-Agent': 'SupportFlowAgent/1.0',
+                        'X-Device-Token': device_token
+                    }
+                )
+                
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Syncing telemetry item (buffered: {len(buffer)}) to {API_URL}...")
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    if response.status == 200:
+                        # Successfully sent, pop from buffer
+                        buffer.pop(0)
+                        save_buffer(buffer)
+                        synced_count += 1
+                    else:
+                        print(f"[{datetime.now().strftime('%H:%M:%S')}] WARNING: Backend returned non-200 status code: {response.status}")
+                        break
+            
+            if synced_count > 0:
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Successfully synced {synced_count} telemetry packets.")
+                
         except urllib.error.HTTPError as he:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] HTTP ERROR: Sync failed with status code {he.code}: {he.reason}. Response details: {he.read().decode('utf-8', errors='ignore')}")
         except urllib.error.URLError as ue:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] CONNECTION FAILED: Unable to reach backend (URL: {API_URL}). Reason: {ue.reason}. Re-attempting sync in 15 seconds...")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] CONNECTION FAILED: Unable to reach backend (URL: {API_URL}). Reason: {ue.reason}. Telemetry buffered offline. Re-attempting sync in 15 seconds...")
         except Exception as e:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] UNEXPECTED ERROR: {e}")
             

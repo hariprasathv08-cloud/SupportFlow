@@ -69,34 +69,34 @@ export default function App() {
             } />
 
             <Route path="/Admin" element={
-              <RoleGuard allowedRoles={["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN", "HR_ADMIN"]}>
+              <RoleGuard allowedRoles={["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN", "HR_ADMIN", "VIEWER"]}>
                 <AdminDashboard />
               </RoleGuard>
             } />
 
             {/* Admin only routes */}
             <Route path="/system-health" element={
-              <RoleGuard allowedRoles={["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN"]}>
+              <RoleGuard allowedRoles={["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN", "VIEWER"]}>
                 <SystemHealth />
               </RoleGuard>
             } />
             <Route path="/network-monitor" element={
-              <RoleGuard allowedRoles={["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN"]}>
+              <RoleGuard allowedRoles={["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN", "VIEWER"]}>
                 <NetworkMonitor />
               </RoleGuard>
             } />
             <Route path="/reports" element={
-              <RoleGuard allowedRoles={["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN", "HR_ADMIN"]}>
+              <RoleGuard allowedRoles={["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN", "HR_ADMIN", "VIEWER"]}>
                 <Reports />
               </RoleGuard>
             } />
             <Route path="/alerts" element={
-              <RoleGuard allowedRoles={["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN"]}>
+              <RoleGuard allowedRoles={["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN", "VIEWER"]}>
                 <Alerts />
               </RoleGuard>
             } />
             <Route path="/users" element={
-              <RoleGuard allowedRoles={["SUPER_ADMIN", "ORGANIZATION_ADMIN"]}>
+              <RoleGuard allowedRoles={["SUPER_ADMIN", "ORGANIZATION_ADMIN", "HR_ADMIN"]}>
                 <Users />
               </RoleGuard>
             } />
@@ -113,14 +113,22 @@ export default function App() {
               </RoleGuard>
             } />
              <Route path="/assets" element={
-              <RoleGuard allowedRoles={["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN"]}>
+              <RoleGuard allowedRoles={["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN", "HR_ADMIN", "VIEWER"]}>
                 <AssetManagement />
               </RoleGuard>
             } />
 
             {/* General user pages */}
-            <Route path="/tickets" element={<TicketManagement />} />
-            <Route path="/settings" element={<Settings />} />
+            <Route path="/tickets" element={
+              <RoleGuard allowedRoles={["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN", "HR_ADMIN", "EMPLOYEE"]}>
+                <TicketManagement />
+              </RoleGuard>
+            } />
+            <Route path="/settings" element={
+              <RoleGuard allowedRoles={["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN", "HR_ADMIN", "EMPLOYEE"]}>
+                <Settings />
+              </RoleGuard>
+            } />
 
             {/* Custom ITSM views */}
             <Route path="/organizations" element={

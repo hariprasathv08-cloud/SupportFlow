@@ -6,7 +6,7 @@ from datetime import datetime
 from app.database import get_db
 from app.models.alert import Alert
 from app.schemas.alert import AlertResponse, AlertResolve
-from app.core.dependencies import get_current_active_user, RoleChecker
+from app.core.dependencies import get_current_active_user, PermissionChecker
 from app.core.scopes import get_scoped_alerts
 
 router = APIRouter()
@@ -24,7 +24,7 @@ def resolve_alert(
     alert_id: int,
     payload: AlertResolve,
     db: Session = Depends(get_db),
-    current_user=Depends(RoleChecker(allowed_roles=["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN"]))
+    current_user=Depends(PermissionChecker("manage_alerts"))
 ):
     alert = get_scoped_alerts(db, current_user).filter(Alert.id == alert_id).first()
     if not alert:

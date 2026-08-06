@@ -7,7 +7,7 @@ import random
 from app.database import get_db
 from app.models.asset import Asset
 from app.schemas.asset import AssetCreate, AssetUpdate, AssetResponse
-from app.core.dependencies import get_current_active_user, RoleChecker
+from app.core.dependencies import get_current_active_user, PermissionChecker
 
 from app.core.scopes import get_scoped_assets
 
@@ -45,7 +45,7 @@ def list_assets(
 def create_asset(
     asset_in: AssetCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(RoleChecker(allowed_roles=["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN"]))
+    current_user=Depends(PermissionChecker("manage_assets"))
 ):
     # Check duplicate serial
     if asset_in.serial_number:
@@ -107,7 +107,7 @@ def update_asset(
     asset_id_val: int,
     asset_up: AssetUpdate,
     db: Session = Depends(get_db),
-    current_user=Depends(RoleChecker(allowed_roles=["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN"]))
+    current_user=Depends(PermissionChecker("manage_assets"))
 ):
     asset = get_scoped_assets(db, current_user).filter(Asset.id == asset_id_val).first()
     if not asset:
@@ -124,7 +124,7 @@ def update_asset(
 def delete_asset(
     asset_id_val: int,
     db: Session = Depends(get_db),
-    current_user=Depends(RoleChecker(allowed_roles=["SUPER_ADMIN", "ORGANIZATION_ADMIN"]))
+    current_user=Depends(PermissionChecker("delete_assets"))
 ):
     asset = get_scoped_assets(db, current_user).filter(Asset.id == asset_id_val).first()
     if not asset:

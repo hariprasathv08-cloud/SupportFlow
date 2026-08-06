@@ -10,7 +10,7 @@ from app.schemas.user import (
     UserResponse, UserCreate, UserUpdate, 
     RoleResponse, PermissionResponse, AuditLogResponse
 )
-from app.core.dependencies import get_current_active_user, RoleChecker
+from app.core.dependencies import get_current_active_user, PermissionChecker
 from app.core.security import get_password_hash
 
 router = APIRouter()
@@ -29,7 +29,7 @@ def list_users(
 def create_user(
     user_in: UserCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(RoleChecker(allowed_roles=["SUPER_ADMIN", "ORGANIZATION_ADMIN", "HR_ADMIN"]))
+    current_user=Depends(PermissionChecker("manage_users"))
 ):
     # Check if duplicate email
     dup = db.query(User).filter(User.email == user_in.email).first()
@@ -129,7 +129,7 @@ def update_user(
 def delete_user(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(RoleChecker(allowed_roles=["Admin", "Super Administrator"]))
+    current_user=Depends(PermissionChecker("manage_users"))
 ):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -160,7 +160,7 @@ def create_role(
     description: Optional[str] = None,
     permission_ids: List[int] = Query([]),
     db: Session = Depends(get_db),
-    current_user=Depends(RoleChecker(allowed_roles=["Admin", "Super Administrator"]))
+    current_user=Depends(PermissionChecker("manage_users"))
 ):
     dup = db.query(Role).filter(Role.name == name).first()
     if dup:
@@ -204,7 +204,7 @@ def get_audit_logs_list(
 @router.get("/session-logs/list")
 def get_session_logs(
     db: Session = Depends(get_db),
-    current_user=Depends(RoleChecker(allowed_roles=["SUPER_ADMIN", "ORGANIZATION_ADMIN"]))
+    current_user=Depends(PermissionChecker("manage_users"))
 ):
     from app.core.scopes import get_scoped_sessions
     from app.models.session_log import SessionLog
@@ -229,7 +229,7 @@ def get_session_logs(
 def bulk_delete_users(
     user_ids: List[int],
     db: Session = Depends(get_db),
-    current_user=Depends(RoleChecker(allowed_roles=["SUPER_ADMIN", "ORGANIZATION_ADMIN"]))
+    current_user=Depends(PermissionChecker("manage_users"))
 ):
     from app.core.scopes import get_scoped_users
     users_to_del = get_scoped_users(db, current_user).filter(User.id.in_(user_ids), User.id != current_user.id).all()
@@ -251,7 +251,7 @@ def bulk_status_users(
     user_ids: List[int],
     status: str,
     db: Session = Depends(get_db),
-    current_user=Depends(RoleChecker(allowed_roles=["SUPER_ADMIN", "ORGANIZATION_ADMIN"]))
+    current_user=Depends(PermissionChecker("manage_users"))
 ):
     from app.core.scopes import get_scoped_users
     users_to_up = get_scoped_users(db, current_user).filter(User.id.in_(user_ids)).all()
@@ -271,7 +271,7 @@ def bulk_status_users(
 @router.post("/ad-sync")
 def sync_active_directory(
     db: Session = Depends(get_db),
-    current_user=Depends(RoleChecker(allowed_roles=["Admin", "Super Administrator"]))
+    current_user=Depends(PermissionChecker("manage_users"))
 ):
     # Simulate directory query
     ad_users = [
@@ -279,7 +279,7 @@ def sync_active_directory(
         {"email": "bruce.banner@supportflow.com", "full_name": "Bruce Banner", "title": "IT Manager", "dept": "Infrastructure Systems"}
     ]
     
-    viewer_role = db.query(Role).filter(Role.name == "Viewer").first()
+    viewer_role = db.query(Role).filter(Role.name == "VIEWER").first()
     synced = 0
     for u in ad_users:
         exists = db.query(User).filter(User.email == u["email"]).first()
@@ -306,7 +306,7 @@ def sync_active_directory(
 @router.post("/csv-import")
 def import_csv_users(
     db: Session = Depends(get_db),
-    current_user=Depends(RoleChecker(allowed_roles=["SUPER_ADMIN", "ORGANIZATION_ADMIN"]))
+    current_user=Depends(PermissionChecker("manage_users"))
 ):
     # Simulates CSV reading
     csv_users = [
@@ -338,7 +338,7 @@ def import_csv_users(
 @router.get("/audits", response_model=List[AuditLogResponse])
 def get_audit_logs(
     db: Session = Depends(get_db),
-    current_user=Depends(RoleChecker(allowed_roles=["SUPER_ADMIN", "ORGANIZATION_ADMIN"]))
+    current_user=Depends(PermissionChecker("manage_users"))
 ):
     from app.core.scopes import get_scoped_audits
     return get_scoped_audits(db, current_user).order_by(AuditLog.created_at.desc()).limit(50).all()

@@ -3,7 +3,7 @@ from typing import List, Dict, Any
 
 from app.schemas.system import SystemSpecs, ProcessInfo, ServiceInfo
 from app.services import system_info
-from app.core.dependencies import get_current_active_user, RoleChecker
+from app.core.dependencies import get_current_active_user, PermissionChecker
 
 router = APIRouter()
 
@@ -23,7 +23,7 @@ def get_services(current_user=Depends(get_current_active_user)):
 def control_service(
     service_name: str,
     action: str = Query(..., regex="^(start|stop|restart)$"),
-    current_user=Depends(RoleChecker(allowed_roles=["Admin", "Super Administrator", "Administrator"]))
+    current_user=Depends(PermissionChecker("remote_control"))
 ):
     success = system_info.control_windows_service(service_name, action)
     if not success:

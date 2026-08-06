@@ -44,6 +44,10 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showForceChange, setShowForceChange] = useState(false);
+  const [newPasswordVal, setNewPasswordVal] = useState("");
+  const [confirmNewPasswordVal, setConfirmNewPasswordVal] = useState("");
+  const [tempAccessData, setTempAccessData] = useState<any>(null);
 
   // Field focus and touch status for validation styling
   const [touchedEmail, setTouchedEmail] = useState(false);
@@ -55,9 +59,9 @@ export default function Login() {
     const token = localStorage.getItem("token");
     const storedRole = localStorage.getItem("role");
     if (token && storedRole) {
-      if (storedRole === "Viewer") {
+      if (storedRole === "Viewer" || storedRole === "VIEWER" || storedRole === "EMPLOYEE") {
         navigate("/MySupport", { replace: true });
-      } else if (storedRole === "Admin" || storedRole === "Super Administrator" || storedRole === "Administrator") {
+      } else if (storedRole === "Admin" || storedRole === "Super Administrator" || storedRole === "Administrator" || storedRole === "SUPER_ADMIN" || storedRole === "ORGANIZATION_ADMIN" || storedRole === "IT_ADMIN" || storedRole === "HR_ADMIN") {
         navigate("/Admin", { replace: true });
       } else {
         navigate("/", { replace: true });
@@ -93,9 +97,9 @@ export default function Login() {
   const strengthDetails = getStrengthLabel(passwordStrength);
 
   const handleRoleRedirect = (userRole: string) => {
-    if (userRole === "Viewer") {
+    if (userRole === "Viewer" || userRole === "VIEWER" || userRole === "EMPLOYEE") {
       navigate("/MySupport");
-    } else if (userRole === "Admin" || userRole === "Super Administrator" || userRole === "Administrator") {
+    } else if (userRole === "Admin" || userRole === "Super Administrator" || userRole === "Administrator" || userRole === "SUPER_ADMIN" || userRole === "ORGANIZATION_ADMIN" || userRole === "IT_ADMIN" || userRole === "HR_ADMIN") {
       navigate("/Admin");
     } else {
       navigate("/");
@@ -108,7 +112,7 @@ export default function Login() {
     setMessage(null);
 
     // Validation checks
-    if (!isValidEmail(email)) {
+    if (authMode !== "login" && !isValidEmail(email)) {
       setError("Please input a valid enterprise corporate email address.");
       return;
     }
@@ -182,10 +186,44 @@ export default function Login() {
           `  - Total client auth time: ${(performance.now() - t0).toFixed(2)}ms`
         );
         
+        if (data.force_password_change) {
+          setTempAccessData(data);
+          setShowForceChange(true);
+          setError(null);
+          setMessage("Security Policy: Password change is required on your first login.");
+          setLoading(false);
+          return;
+        }
+
         handleRoleRedirect(data.role);
       }
     } catch (err: any) {
       setError(err.message || "Authentication sweep failed. Connection timeout.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForceChangeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPasswordVal !== confirmNewPasswordVal) {
+      setError("Passwords do not match.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      await api.post("/auth/change-password", {
+        old_password: password,
+        new_password: newPasswordVal
+      });
+      setMessage("Password updated successfully! Redirecting...");
+      setShowForceChange(false);
+      if (tempAccessData) {
+        handleRoleRedirect(tempAccessData.role);
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to update password.");
     } finally {
       setLoading(false);
     }
@@ -336,7 +374,51 @@ export default function Login() {
             </AnimatePresence>
 
             {/* AUTH FORMS CONTAINER */}
-            {authMode !== "forgot-password" ? (
+            {showForceChange ? (
+              <form onSubmit={handleForceChangeSubmit} className="space-y-4">
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none text-slate-500 group-focus-within:text-primary transition-colors">
+                    <Lock className="h-4 w-4" />
+                  </div>
+                  <input
+                    type="password"
+                    required
+                    value={newPasswordVal}
+                    onChange={(e) => setNewPasswordVal(e.target.value)}
+                    placeholder=" "
+                    className="block pl-10 pr-3.5 pb-2.5 pt-5 w-full text-sm text-white bg-slate-900/40 border border-slate-800/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary peer transition-all duration-200"
+                  />
+                  <label className="absolute text-xs text-slate-500 duration-200 transform -translate-y-3 scale-75 top-4 z-10 origin-[0] left-10 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-3 peer-focus:text-primary pointer-events-none">
+                    New Password
+                  </label>
+                </div>
+
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none text-slate-500 group-focus-within:text-primary transition-colors">
+                    <Lock className="h-4 w-4" />
+                  </div>
+                  <input
+                    type="password"
+                    required
+                    value={confirmNewPasswordVal}
+                    onChange={(e) => setConfirmNewPasswordVal(e.target.value)}
+                    placeholder=" "
+                    className="block pl-10 pr-3.5 pb-2.5 pt-5 w-full text-sm text-white bg-slate-900/40 border border-slate-800/80 rounded-xl focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary peer transition-all duration-200"
+                  />
+                  <label className="absolute text-xs text-slate-500 duration-200 transform -translate-y-3 scale-75 top-4 z-10 origin-[0] left-10 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-3 peer-focus:text-primary pointer-events-none">
+                    Confirm New Password
+                  </label>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3 px-4 rounded-xl bg-primary text-white font-bold text-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200 shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
+                >
+                  {loading ? "Updating..." : "Update Password & Sign In"}
+                </button>
+              </form>
+            ) : authMode !== "forgot-password" ? (
               <form onSubmit={handleSubmit} className="space-y-4">
                 
                 {/* REGISTER FIELDS: Full Name */}

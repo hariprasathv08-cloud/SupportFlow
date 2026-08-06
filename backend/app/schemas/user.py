@@ -75,6 +75,7 @@ class Token(BaseModel):
     role: str
     full_name: str
     refresh_token: Optional[str] = None
+    force_password_change: Optional[bool] = False
 
 class TokenData(BaseModel):
     email: Optional[str] = None
