@@ -125,11 +125,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Redirect root to interactive documentation
-@app.get("/")
-def root_redirect():
-    return RedirectResponse(url="/docs")
-
 # Public Health Check
 @app.get("/health")
 def health_check():
