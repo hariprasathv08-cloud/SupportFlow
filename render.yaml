@@ -2,9 +2,10 @@ services:
   # 1. Backend Web Service (FastAPI)
   - type: web
     name: supportflow-backend
-    runtime: docker
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
+    runtime: python
+    rootDir: backend
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
     plan: free
     envVars:
       - key: PORT
@@ -32,3 +33,4 @@ services:
 databases:
   - name: supportflow-db
     plan: free
+
