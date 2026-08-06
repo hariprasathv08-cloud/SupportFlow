@@ -42,7 +42,7 @@ class RoleChecker:
         role_name = current_user.role.name if hasattr(current_user.role, "name") else str(current_user.role)
         
         # Super Administrator always has bypass access
-        if role_name == "Super Administrator" or role_name == "Admin":
+        if role_name in ["Super Administrator", "Admin", "SUPER_ADMIN"]:
             return current_user
             
         if role_name not in self.allowed_roles:

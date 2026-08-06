@@ -7,6 +7,7 @@ from app.database import get_db
 from app.models.alert import Alert
 from app.schemas.alert import AlertResponse, AlertResolve
 from app.core.dependencies import get_current_active_user, RoleChecker
+from app.core.scopes import get_scoped_alerts
 
 router = APIRouter()
 
@@ -15,14 +16,7 @@ def list_alerts(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_active_user)
 ):
-    query = db.query(Alert)
-    if current_user.role == "Viewer":
-        from app.models.asset import Asset
-        user_assets = db.query(Asset).filter(Asset.assigned_user_id == current_user.id).all()
-        if user_assets:
-            query = query.filter(Alert.asset_id.in_([a.id for a in user_assets]))
-        else:
-            return []
+    query = get_scoped_alerts(db, current_user)
     return query.order_by(Alert.created_at.desc()).all()
 
 @router.post("/{alert_id}/resolve", response_model=AlertResponse)
@@ -30,11 +24,11 @@ def resolve_alert(
     alert_id: int,
     payload: AlertResolve,
     db: Session = Depends(get_db),
-    current_user=Depends(RoleChecker(allowed_roles=["Admin", "Super Administrator", "Administrator"]))
+    current_user=Depends(RoleChecker(allowed_roles=["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN"]))
 ):
-    alert = db.query(Alert).filter(Alert.id == alert_id).first()
+    alert = get_scoped_alerts(db, current_user).filter(Alert.id == alert_id).first()
     if not alert:
-        raise HTTPException(status_code=404, detail="Alert not found")
+        raise HTTPException(status_code=403, detail="Not authorized to access this alert")
         
     alert.resolved = payload.resolved
     if payload.resolved:

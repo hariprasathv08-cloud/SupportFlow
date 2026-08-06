@@ -8,6 +8,8 @@ from app.database import get_db
 from app.models.asset import Asset
 from app.core.websocket import manager
 
+from app.core.scopes import get_scoped_assets
+
 router = APIRouter()
 
 @router.post("/run", response_model=DiagnosticsResult)
@@ -17,9 +19,9 @@ async def run_diagnostics(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_active_user)
 ):
-    # Enforce access boundaries:
-    if current_user.role == "Viewer":
-        asset = db.query(Asset).filter(Asset.assigned_user_id == current_user.id).first()
+    role_name = current_user.role.name if hasattr(current_user.role, "name") else str(current_user.role)
+    if role_name == "EMPLOYEE":
+        asset = get_scoped_assets(db, current_user).first()
         if not asset:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -28,15 +30,19 @@ async def run_diagnostics(
         target_device_id = asset.id
     else:
         if device_id is not None:
-            asset = db.query(Asset).filter(Asset.id == device_id).first()
+            asset = get_scoped_assets(db, current_user).filter(Asset.id == device_id).first()
             if not asset:
-                raise HTTPException(status_code=404, detail="Device not found")
+                raise HTTPException(status_code=403, detail="Not authorized to run diagnostics on this device")
             target_device_id = device_id
         else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No monitored endpoint connected. Please specify a device ID."
-            )
+            first_scoped = get_scoped_assets(db, current_user).first()
+            if first_scoped:
+                target_device_id = first_scoped.id
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No monitored endpoint connected. Please specify a device ID."
+                )
 
     async def ws_callback(packet: dict):
         await manager.broadcast(packet)

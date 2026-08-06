@@ -9,6 +9,8 @@ from app.models.asset import Asset
 from app.schemas.asset import AssetCreate, AssetUpdate, AssetResponse
 from app.core.dependencies import get_current_active_user, RoleChecker
 
+from app.core.scopes import get_scoped_assets
+
 router = APIRouter()
 
 @router.get("", response_model=List[AssetResponse])
@@ -22,9 +24,7 @@ def list_assets(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_active_user)
 ):
-    query = db.query(Asset)
-    if current_user.role == "Viewer":
-        query = query.filter(Asset.assigned_user_id == current_user.id)
+    query = get_scoped_assets(db, current_user)
     
     if hostname:
         query = query.filter(Asset.hostname.ilike(f"%{hostname}%"))
@@ -45,7 +45,7 @@ def list_assets(
 def create_asset(
     asset_in: AssetCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(RoleChecker(allowed_roles=["Admin", "Super Administrator", "Administrator"]))
+    current_user=Depends(RoleChecker(allowed_roles=["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN"]))
 ):
     # Check duplicate serial
     if asset_in.serial_number:
@@ -59,6 +59,10 @@ def create_asset(
     # Generate unique UUID & Tag
     new_uuid = asset_in.uuid or str(uuid.uuid4())
     asset_tag = f"HDX-{new_uuid[:8].upper()}"
+
+    creator_role = current_user.role.name if hasattr(current_user.role, "name") else str(current_user.role)
+    org_id = current_user.organization_id if creator_role != "SUPER_ADMIN" else asset_in.organization_id
+    dept_id = current_user.department_id if creator_role in ["IT_ADMIN", "HR_ADMIN"] else asset_in.department_id
 
     db_asset = Asset(
         uuid=new_uuid,
@@ -76,6 +80,8 @@ def create_asset(
         location=asset_in.location or "HQ",
         warranty=asset_in.warranty or "Active - 3 Years",
         purchase_date=asset_in.purchase_date,
+        organization_id=org_id,
+        department_id=dept_id,
         status="Offline",  # manually added assets start offline until agent registers
         health_score=100
     )
@@ -91,10 +97,8 @@ def get_asset(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_active_user)
 ):
-    asset = db.query(Asset).filter(Asset.id == asset_id_val).first()
+    asset = get_scoped_assets(db, current_user).filter(Asset.id == asset_id_val).first()
     if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found")
-    if current_user.role == "Viewer" and asset.assigned_user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to view this asset details")
     return asset
 
@@ -103,11 +107,11 @@ def update_asset(
     asset_id_val: int,
     asset_up: AssetUpdate,
     db: Session = Depends(get_db),
-    current_user=Depends(RoleChecker(allowed_roles=["Admin", "Super Administrator", "Administrator"]))
+    current_user=Depends(RoleChecker(allowed_roles=["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN"]))
 ):
-    asset = db.query(Asset).filter(Asset.id == asset_id_val).first()
+    asset = get_scoped_assets(db, current_user).filter(Asset.id == asset_id_val).first()
     if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found")
+        raise HTTPException(status_code=403, detail="Not authorized to modify this asset")
         
     for field, val in asset_up.dict(exclude_unset=True).items():
         setattr(asset, field, val)
@@ -120,11 +124,11 @@ def update_asset(
 def delete_asset(
     asset_id_val: int,
     db: Session = Depends(get_db),
-    current_user=Depends(RoleChecker(allowed_roles=["Admin"]))
+    current_user=Depends(RoleChecker(allowed_roles=["SUPER_ADMIN", "ORGANIZATION_ADMIN"]))
 ):
-    asset = db.query(Asset).filter(Asset.id == asset_id_val).first()
+    asset = get_scoped_assets(db, current_user).filter(Asset.id == asset_id_val).first()
     if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found")
+        raise HTTPException(status_code=403, detail="Not authorized to delete this asset")
     db.delete(asset)
     db.commit()
     return None

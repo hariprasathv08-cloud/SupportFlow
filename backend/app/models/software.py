@@ -27,7 +27,10 @@ class Software(Base):
     dependencies = Column(Text, nullable=True)
     last_updated = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
+
     asset = relationship("Asset", back_populates="software")
+    organization = relationship("Organization")
 
 class SoftwareHistory(Base):
     __tablename__ = "software_history"
@@ -39,5 +42,7 @@ class SoftwareHistory(Base):
     old_version = Column(String, nullable=True)
     new_version = Column(String, nullable=True)
     timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
 
     asset = relationship("Asset", back_populates="software_history")
+    organization = relationship("Organization")

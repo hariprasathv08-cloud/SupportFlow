@@ -32,6 +32,12 @@ class Ticket(Base):
     device_location = Column(String, default="HQ", nullable=True)
     device_internet_status = Column(String, default="Connected", nullable=True)
 
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
+    department_id = Column(Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True)
+
+    organization = relationship("Organization")
+    department_relation = relationship("Department")
+
     assigned_to = relationship("User", foreign_keys=[assigned_to_id])
     created_by = relationship("User", foreign_keys=[created_by_id])
     comments = relationship("Comment", back_populates="ticket", cascade="all, delete-orphan")

@@ -15,7 +15,12 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-  ShieldCheck
+  ShieldCheck,
+  Building,
+  Briefcase,
+  UserCheck,
+  History,
+  FileSpreadsheet
 } from "lucide-react";
 import { useTheme } from "../hooks/useTheme";
 import { useBackendStatus } from "../hooks/useBackendStatus";
@@ -35,8 +40,8 @@ export default function Sidebar({ role, userName }: SidebarProps) {
     updatePreference("sidebar_state", val ? "collapsed" : "expanded");
   };
 
-  const isViewer = role === "Viewer";
-  const isAdmin = role === "Admin" || role === "Super Administrator" || role === "Administrator";
+  const isViewer = role === "EMPLOYEE";
+  const isAdmin = role === "SUPER_ADMIN" || role === "ORGANIZATION_ADMIN" || role === "IT_ADMIN";
 
   const menuItems = [
     { name: "Dashboard", path: "/", icon: LayoutDashboard },
@@ -47,12 +52,19 @@ export default function Sidebar({ role, userName }: SidebarProps) {
       { name: "Assets", path: "/assets", icon: Database },
       { name: "Software Inventory", path: "/software", icon: Layers },
     ] : []),
-    { name: "SupportFlow Tickets", path: "/tickets", icon: Ticket },
+    { name: "ITSM Tickets", path: "/tickets", icon: Ticket },
     ...(!isViewer ? [
       { name: "Reports", path: "/reports", icon: FileText },
       { name: "Real-time Alerts", path: "/alerts", icon: AlertTriangle },
     ] : []),
     ...(isAdmin ? [{ name: "Users & Roles", path: "/users", icon: Users }] : []),
+    ...(role === "SUPER_ADMIN" ? [{ name: "Organizations", path: "/organizations", icon: Building }] : []),
+    ...(role === "SUPER_ADMIN" || role === "ORGANIZATION_ADMIN" ? [{ name: "Departments", path: "/departments", icon: Briefcase }] : []),
+    ...(role === "SUPER_ADMIN" || role === "ORGANIZATION_ADMIN" || role === "IT_ADMIN" ? [{ name: "Enrollment Requests", path: "/agent-enrollments", icon: UserCheck }] : []),
+    ...(role === "SUPER_ADMIN" || role === "ORGANIZATION_ADMIN" ? [
+      { name: "Audit Logs", path: "/audit-logs", icon: FileSpreadsheet },
+      { name: "Session Logs", path: "/session-logs", icon: History }
+    ] : []),
     { name: "Settings", path: "/settings", icon: Settings },
   ];
 

@@ -21,6 +21,8 @@ UPLOAD_DIR = os.path.join(os.path.abspath(os.path.dirname(os.path.dirname(os.pat
 # Ensure upload directory exists
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+from app.core.scopes import get_scoped_tickets
+
 @router.get("", response_model=List[TicketResponse])
 async def list_tickets(
     status_filter: Optional[str] = None,
@@ -28,13 +30,7 @@ async def list_tickets(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    query = db.query(Ticket)
-    
-    # Enforce access boundaries:
-    # 1. Employees (Viewer role) can only see tickets they opened.
-    # 2. Administrators see all tickets.
-    if current_user.role == "Viewer":
-        query = query.filter(Ticket.created_by_id == current_user.id)
+    query = get_scoped_tickets(db, current_user)
         
     if status_filter:
         query = query.filter(Ticket.status == status_filter)
@@ -60,7 +56,9 @@ async def create_ticket(
         status="Open",
         assigned_to_id=ticket_in.assigned_to_id,
         created_by_id=current_user.id,
-        due_date=ticket_in.due_date
+        due_date=ticket_in.due_date,
+        organization_id=current_user.organization_id,
+        department_id=current_user.department_id
     )
 
     # Attach live machine diagnostics automatically if found
@@ -95,8 +93,11 @@ async def create_ticket(
     # Email notification print log
     print(f"[MAIL SYSTEM] Ticket #{db_ticket.id} Created: '{db_ticket.title}'. Dispatched alerts to operations coordinators.")
 
-    # Dispatch notifications to Admins
-    admins = db.query(User).join(Role).filter(Role.name.in_(["Admin", "Super Administrator", "Administrator"])).all()
+    # Dispatch notifications to Admins of the same organization
+    admins = db.query(User).join(Role).filter(
+        Role.name.in_(["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN"]),
+        (User.organization_id == current_user.organization_id) | (Role.name == "SUPER_ADMIN")
+    ).all()
     notifs = []
     for admin in admins:
         notif = Notification(
@@ -146,11 +147,8 @@ async def get_ticket(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    ticket = get_scoped_tickets(db, current_user).filter(Ticket.id == ticket_id).first()
     if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found")
-        
-    if current_user.role == "Viewer" and ticket.created_by_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to view this ticket")
         
     return ticket
@@ -162,11 +160,8 @@ async def update_ticket(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    ticket = get_scoped_tickets(db, current_user).filter(Ticket.id == ticket_id).first()
     if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found")
-        
-    if current_user.role == "Viewer" and ticket.created_by_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to update this ticket")
 
     changes = []
@@ -312,11 +307,8 @@ async def add_comment_json(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    ticket = get_scoped_tickets(db, current_user).filter(Ticket.id == ticket_id).first()
     if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found")
-        
-    if current_user.role == "Viewer" and ticket.created_by_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to edit this ticket")
         
     db_comment = Comment(
@@ -342,17 +334,13 @@ async def list_ticket_messages(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    ticket = get_scoped_tickets(db, current_user).filter(Ticket.id == ticket_id).first()
     if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found")
-        
-    is_admin = current_user.role in ["Admin", "Super Administrator", "Administrator"]
-    is_viewer = current_user.role == "Viewer"
-    
-    if is_viewer and ticket.created_by_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to read messages on this ticket")
-    elif not is_admin and not is_viewer:
-        raise HTTPException(status_code=403, detail="Not authorized")
+        
+    role_name = current_user.role.name if hasattr(current_user.role, "name") else str(current_user.role)
+    is_admin = role_name in ["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN", "HR_ADMIN"]
+    is_viewer = role_name == "EMPLOYEE"
         
     return db.query(TicketMessage).filter(TicketMessage.ticket_id == ticket_id).order_by(TicketMessage.created_at.asc()).all()
 
@@ -364,17 +352,13 @@ async def send_ticket_message(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    ticket = get_scoped_tickets(db, current_user).filter(Ticket.id == ticket_id).first()
     if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found")
-        
-    is_admin = current_user.role in ["Admin", "Super Administrator", "Administrator"]
-    is_viewer = current_user.role == "Viewer"
-    
-    if is_viewer and ticket.created_by_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to communicate on this ticket")
-    elif not is_admin and not is_viewer:
-        raise HTTPException(status_code=403, detail="Not authorized")
+        
+    role_name = current_user.role.name if hasattr(current_user.role, "name") else str(current_user.role)
+    is_admin = role_name in ["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN", "HR_ADMIN"]
+    is_viewer = role_name == "EMPLOYEE"
 
     file_path = None
     file_name = None

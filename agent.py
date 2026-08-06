@@ -333,6 +333,55 @@ def collect_telemetry() -> Dict[str, Any]:
 def main():
     import urllib.request
     import json
+    import argparse
+
+    parser = argparse.ArgumentParser(description="SupportFlow Endpoint Agent")
+    parser.add_argument("--enroll", type=str, help="Enrollment key for registration")
+    args = parser.parse_args()
+
+    token_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), ".agent_token")
+
+    if args.enroll:
+        payload = {
+            "device_uuid": get_or_create_uuid(),
+            "hostname": socket.gethostname(),
+            "operating_system": platform.system(),
+            "enrollment_key": args.enroll
+        }
+        enroll_url = f"{API_BASE_URL.rstrip('/')}/api/v1/agents/enroll"
+        print(f"Attempting to enroll agent with backend: {enroll_url}")
+        try:
+            req = urllib.request.Request(
+                enroll_url,
+                data=json.dumps(payload).encode('utf-8'),
+                headers={'Content-Type': 'application/json', 'User-Agent': 'SupportFlowAgent/1.0'}
+            )
+            with urllib.request.urlopen(req, timeout=10) as response:
+                res_data = json.loads(response.read().decode('utf-8'))
+                token = res_data.get("api_token")
+                if token:
+                    with open(token_file, "w") as f:
+                        f.write(token)
+                    print(f"Enrollment successful! Saved device API token. Approval Status: {res_data.get('status')}")
+                    print("You can now run the agent normally.")
+                    sys.exit(0)
+                else:
+                    print(f"Enrollment failed: {res_data.get('message')}")
+                    sys.exit(1)
+        except urllib.error.HTTPError as he:
+            print(f"Enrollment HTTP Error {he.code}: {he.read().decode('utf-8', errors='ignore')}")
+            sys.exit(1)
+        except Exception as e:
+            print(f"Enrollment Error: {e}")
+            sys.exit(1)
+
+    if not os.path.exists(token_file):
+        print("Error: Device is not enrolled. Please enroll using:")
+        print("  python agent.py --enroll <enrollment_key>")
+        sys.exit(1)
+
+    with open(token_file, "r") as f:
+        device_token = f.read().strip()
 
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] SupportFlow Endpoint Monitoring Agent started.")
     print(f"Agent Device UUID: {get_or_create_uuid()}")
@@ -350,7 +399,8 @@ def main():
                 data=json.dumps(payload).encode('utf-8'),
                 headers={
                     'Content-Type': 'application/json',
-                    'User-Agent': 'SupportFlowAgent/1.0'
+                    'User-Agent': 'SupportFlowAgent/1.0',
+                    'X-Device-Token': device_token
                 }
             )
             

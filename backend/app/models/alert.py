@@ -15,4 +15,7 @@ class Alert(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     resolved_at = Column(DateTime, nullable=True)
 
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
+
     asset = relationship("Asset", back_populates="alerts")
+    organization = relationship("Organization")

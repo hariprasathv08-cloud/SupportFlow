@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Header
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import List
@@ -118,30 +118,118 @@ def calculate_device_health(payload: TelemetryPayload) -> int:
 
     return max(0, score)
 
-@router.post("/telemetry", response_model=TelemetryResponse)
-async def post_telemetry(payload: TelemetryPayload, db: Session = Depends(get_db)):
-    # 1. Fetch or create Asset
-    uuid_val = payload.device_uuid or payload.uuid
-    asset = db.query(Asset).filter(Asset.uuid == uuid_val).first()
-    if not asset:
-        # Check by serial_number fallback to prevent duplicate physical node creation
-        if payload.serial_number:
-            asset = db.query(Asset).filter(Asset.serial_number == payload.serial_number).first()
-            
-        if not asset:
-            asset_tag_str = f"HDX-{uuid_val[:8].upper()}" if uuid_val else f"HDX-{str(random.randint(100000, 999999))}"
-            asset = Asset(
-                uuid=uuid_val,
-                asset_tag=asset_tag_str,
-                hostname=payload.hostname,
-                operating_system=payload.operating_system or payload.os,
-                type=payload.type or "Workstation"
-            )
-            db.add(asset)
-            db.commit()
-            db.refresh(asset)
+from app.models.organization import Organization
+from app.core.scopes import get_scoped_assets
+from pydantic import BaseModel
+import uuid
 
-    # 2. Update Asset properties
+class EnrollmentRequest(BaseModel):
+    device_uuid: str
+    hostname: str
+    operating_system: str
+    enrollment_key: str
+
+@router.post("/enroll")
+def enroll_agent(payload: EnrollmentRequest, db: Session = Depends(get_db)):
+    org = db.query(Organization).filter(Organization.enrollment_key == payload.enrollment_key).first()
+    if not org:
+        raise HTTPException(status_code=400, detail="Invalid enrollment key")
+        
+    asset = db.query(Asset).filter(Asset.uuid == payload.device_uuid).first()
+    if not asset:
+        asset_tag_str = f"HDX-{payload.device_uuid[:8].upper()}"
+        token = "tok_" + uuid.uuid4().hex
+        asset = Asset(
+            uuid=payload.device_uuid,
+            asset_tag=asset_tag_str,
+            hostname=payload.hostname,
+            operating_system=payload.operating_system,
+            organization_id=org.id,
+            approval_status="Pending",
+            api_token=token
+        )
+        db.add(asset)
+        db.commit()
+        db.refresh(asset)
+    else:
+        if not asset.api_token:
+            asset.api_token = "tok_" + uuid.uuid4().hex
+            db.commit()
+            
+    return {
+        "status": asset.approval_status,
+        "api_token": asset.api_token,
+        "message": "Device registration received. Awaiting admin approval."
+    }
+
+@router.get("/pending")
+def list_pending_agents(db: Session = Depends(get_db), current_user=Depends(get_current_active_user)):
+    role_name = current_user.role.name if hasattr(current_user.role, "name") else str(current_user.role)
+    if role_name not in ["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN"]:
+        raise HTTPException(status_code=403, detail="Not authorized to manage agent approvals")
+        
+    query = db.query(Asset).filter(Asset.approval_status == "Pending")
+    if role_name != "SUPER_ADMIN":
+        query = query.filter(Asset.organization_id == current_user.organization_id)
+    return query.all()
+
+@router.post("/{device_id}/approve")
+def approve_agent(device_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_active_user)):
+    role_name = current_user.role.name if hasattr(current_user.role, "name") else str(current_user.role)
+    if role_name not in ["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN"]:
+        raise HTTPException(status_code=403, detail="Not authorized to manage agent approvals")
+        
+    asset = db.query(Asset).filter(Asset.id == device_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Device not found")
+        
+    if role_name != "SUPER_ADMIN" and asset.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=403, detail="Device belongs to another organization")
+        
+    asset.approval_status = "Approved"
+    db.commit()
+    return {"status": "Approved", "message": f"Device {asset.hostname} successfully approved for monitoring"}
+
+@router.post("/{device_id}/reject")
+def reject_agent(device_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_active_user)):
+    role_name = current_user.role.name if hasattr(current_user.role, "name") else str(current_user.role)
+    if role_name not in ["SUPER_ADMIN", "ORGANIZATION_ADMIN", "IT_ADMIN"]:
+        raise HTTPException(status_code=403, detail="Not authorized to manage agent approvals")
+        
+    asset = db.query(Asset).filter(Asset.id == device_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Device not found")
+        
+    if role_name != "SUPER_ADMIN" and asset.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=403, detail="Device belongs to another organization")
+        
+    asset.approval_status = "Rejected"
+    db.commit()
+    return {"status": "Rejected", "message": f"Device {asset.hostname} successfully rejected"}
+
+@router.post("/telemetry", response_model=TelemetryResponse)
+async def post_telemetry(
+    payload: TelemetryPayload, 
+    db: Session = Depends(get_db),
+    x_device_token: str = Header(None, alias="X-Device-Token")
+):
+    token_val = x_device_token
+    if not token_val:
+        # Fallback to check if payload.device_uuid matches an approved device (for backward compatibility if needed)
+        # But we require secure tokens:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Device API token required")
+        
+    asset = db.query(Asset).filter(Asset.api_token == token_val).first()
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid device token")
+        
+    if asset.approval_status != "Approved":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Device monitoring is not approved"
+        )
+
+    # Update Asset properties
     asset.hostname = payload.hostname
     asset.ip_address = payload.ip_address
     asset.mac_address = payload.mac_address
@@ -162,6 +250,8 @@ async def post_telemetry(payload: TelemetryPayload, db: Session = Depends(get_db
         ).first()
         if linked_user:
             asset.assigned_user_id = linked_user.id
+            if linked_user.department_id:
+                asset.department_id = linked_user.department_id
     
     # Auto-Discovered Hardware specs mapping
     if payload.manufacturer:
@@ -192,7 +282,7 @@ async def post_telemetry(payload: TelemetryPayload, db: Session = Depends(get_db
     asset.health_score = calculate_device_health(payload)
     db.commit()
 
-    # 3. Create Telemetry History Point
+    # Create Telemetry History Point
     telemetry = Telemetry(
         asset_id=asset.id,
         cpu_usage=payload.cpu_usage,
@@ -210,7 +300,24 @@ async def post_telemetry(payload: TelemetryPayload, db: Session = Depends(get_db
     db.commit()
     db.refresh(telemetry)
 
-    # 4. Trigger Alerts Engine checks
+    # Synchronize Software table
+    if isinstance(payload.software, list):
+        from app.models.software import Software
+        db.query(Software).filter(Software.asset_id == asset.id).delete()
+        for sw in payload.software:
+            if isinstance(sw, dict) and sw.get("name"):
+                db_sw = Software(
+                    asset_id=asset.id,
+                    organization_id=asset.organization_id,
+                    name=sw.get("name"),
+                    version=sw.get("version"),
+                    publisher=sw.get("publisher"),
+                    install_date=sw.get("install_date")
+                )
+                db.add(db_sw)
+        db.commit()
+
+    # Process alert engine updates
     await process_device_alert(
         db, asset.id, "CPU", 
         payload.cpu_usage > 90.0, 
@@ -229,19 +336,8 @@ async def post_telemetry(payload: TelemetryPayload, db: Session = Depends(get_db
         f"Device {asset.hostname} reports Disk full: {payload.disk_usage}%", 
         "Critical"
     )
-    if payload.cpu_temp:
-        await process_device_alert(
-            db, asset.id, "Temperature", 
-            payload.cpu_temp > 85.0, 
-            f"Device {asset.hostname} CPU temperature high: {payload.cpu_temp}C", 
-            "Warning"
-        )
 
-    # 5. Broadcast to connected browser clients based on user visibility
-    open_tickets = db.query(Ticket).filter(Ticket.status != "Resolved").count()
-    resolved_tickets = db.query(Ticket).filter(Ticket.status == "Resolved").count()
-    active_alerts = db.query(Alert).filter(Alert.resolved == False).count()
-
+    # Broadcast to connected browser clients
     msg = {
         "type": "metrics_update",
         "timestamp": datetime.now().isoformat(),
@@ -258,51 +354,42 @@ async def post_telemetry(payload: TelemetryPayload, db: Session = Depends(get_db
             "firewall_status": "Enabled",
             "internet_status": True,
             "services_running_count": len([s for s in (payload.services or []) if s.get("status", "") == "running"]),
-            "open_tickets_count": open_tickets,
-            "resolved_tickets_count": resolved_tickets,
-            "critical_alerts_count": active_alerts,
             "health_score": asset.health_score
         }
     }
 
     from app.models.user import User
+    from app.models.user import Role
     active_users = db.query(User).filter(User.is_active == True).all()
     for u in active_users:
-        if is_admin(u) or asset.assigned_user_id == u.id:
+        u_role = u.role.name if hasattr(u.role, "name") else str(u.role)
+        if u_role == "SUPER_ADMIN" or (u.organization_id == asset.organization_id and (u_role in ["ORGANIZATION_ADMIN", "IT_ADMIN", "HR_ADMIN"] or asset.assigned_user_id == u.id)):
             await manager.send_to_user(u.id, msg)
 
     return telemetry
 
 @router.get("/devices", response_model=List[DeviceResponse])
 def get_devices(db: Session = Depends(get_db), current_user=Depends(get_current_active_user)):
-    if not is_admin(current_user):
-        return db.query(Asset).filter(Asset.assigned_user_id == current_user.id).all()
-    return db.query(Asset).order_by(Asset.last_seen.desc()).all()
+    return get_scoped_assets(db, current_user).order_by(Asset.last_seen.desc()).all()
 
 @router.get("/devices/{device_id}", response_model=DeviceResponse)
 def get_device(device_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_active_user)):
-    asset = db.query(Asset).filter(Asset.id == device_id).first()
+    asset = get_scoped_assets(db, current_user).filter(Asset.id == device_id).first()
     if not asset:
-        raise HTTPException(status_code=404, detail="Device not found")
-    if not is_admin(current_user) and asset.assigned_user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to access this device details")
     return asset
 
 @router.get("/devices/{device_id}/telemetry-history", response_model=List[TelemetryResponse])
 def get_telemetry_history(device_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_active_user)):
-    asset = db.query(Asset).filter(Asset.id == device_id).first()
+    asset = get_scoped_assets(db, current_user).filter(Asset.id == device_id).first()
     if not asset:
-        raise HTTPException(status_code=404, detail="Device not found")
-    if not is_admin(current_user) and asset.assigned_user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to access this device telemetry")
     return db.query(Telemetry).filter(Telemetry.asset_id == device_id).order_by(Telemetry.created_at.desc()).limit(30).all()[::-1]
 
 @router.get("/devices/{device_id}/latest-telemetry")
 def get_latest_telemetry(device_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_active_user)):
-    asset = db.query(Asset).filter(Asset.id == device_id).first()
+    asset = get_scoped_assets(db, current_user).filter(Asset.id == device_id).first()
     if not asset:
-        raise HTTPException(status_code=404, detail="Device not found")
-    if not is_admin(current_user) and asset.assigned_user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to access this device telemetry")
     tel = db.query(Telemetry).filter(Telemetry.asset_id == device_id).order_by(Telemetry.created_at.desc()).first()
     if not tel:

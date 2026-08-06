@@ -15,19 +15,21 @@ from app.core.security import get_password_hash
 
 router = APIRouter()
 
+from app.core.scopes import get_scoped_users
+
 # --- Users Endpoints ---
 @router.get("", response_model=List[UserResponse])
 def list_users(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_active_user)
 ):
-    return db.query(User).all()
+    return get_scoped_users(db, current_user).all()
 
 @router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def create_user(
     user_in: UserCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(RoleChecker(allowed_roles=["Admin", "Super Administrator"]))
+    current_user=Depends(RoleChecker(allowed_roles=["SUPER_ADMIN", "ORGANIZATION_ADMIN", "HR_ADMIN"]))
 ):
     # Check if duplicate email
     dup = db.query(User).filter(User.email == user_in.email).first()
@@ -47,6 +49,14 @@ def create_user(
             db.refresh(role_obj)
         target_role_id = role_obj.id
 
+    creator_role = current_user.role.name if hasattr(current_user.role, "name") else str(current_user.role)
+    if creator_role != "SUPER_ADMIN":
+        org_id = current_user.organization_id
+        dept_id = current_user.department_id if creator_role == "HR_ADMIN" else user_in.department_id
+    else:
+        org_id = user_in.organization_id
+        dept_id = user_in.department_id
+    
     db_user = User(
         email=user_in.email,
         username=username_val,
@@ -59,7 +69,9 @@ def create_user(
         department=user_in.department,
         job_title=user_in.job_title,
         phone=user_in.phone,
-        manager=user_in.manager
+        manager=user_in.manager,
+        organization_id=org_id,
+        department_id=dept_id
     )
     db.add(db_user)
     db.commit()
@@ -68,6 +80,7 @@ def create_user(
     db.add(AuditLog(
         action="User Created", 
         user_id=current_user.id, 
+        organization_id=current_user.organization_id,
         details=f"Admin created user: {db_user.email} (Role ID: {db_user.role_id})"
     ))
     db.commit()
@@ -181,25 +194,55 @@ def get_permissions(
 
 # --- Audit Logs Endpoint ---
 @router.get("/audit-logs/list", response_model=List[AuditLogResponse])
-def get_audit_logs(
+def get_audit_logs_list(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_active_user)
 ):
-    return db.query(AuditLog).order_by(AuditLog.created_at.desc()).all()
+    from app.core.scopes import get_scoped_audits
+    return get_scoped_audits(db, current_user).order_by(AuditLog.created_at.desc()).all()
+
+@router.get("/session-logs/list")
+def get_session_logs(
+    db: Session = Depends(get_db),
+    current_user=Depends(RoleChecker(allowed_roles=["SUPER_ADMIN", "ORGANIZATION_ADMIN"]))
+):
+    from app.core.scopes import get_scoped_sessions
+    from app.models.session_log import SessionLog
+    sessions = get_scoped_sessions(db, current_user).order_by(SessionLog.created_at.desc()).limit(100).all()
+    return [
+        {
+            "id": s.id,
+            "user_id": s.user_id,
+            "username": s.user.username if s.user else "System",
+            "email": s.user.email if s.user else "N/A",
+            "ip_address": s.ip_address or "N/A",
+            "user_agent": s.user_agent or "N/A",
+            "login_time": s.login_time.isoformat() if s.login_time else None,
+            "logout_time": s.logout_time.isoformat() if s.logout_time else None,
+            "status": s.status
+        }
+        for s in sessions
+    ]
 
 # --- Bulk Actions ---
 @router.post("/bulk-delete")
 def bulk_delete_users(
     user_ids: List[int],
     db: Session = Depends(get_db),
-    current_user=Depends(RoleChecker(allowed_roles=["Admin", "Super Administrator"]))
+    current_user=Depends(RoleChecker(allowed_roles=["SUPER_ADMIN", "ORGANIZATION_ADMIN"]))
 ):
-    users_to_del = db.query(User).filter(User.id.in_(user_ids), User.id != current_user.id).all()
+    from app.core.scopes import get_scoped_users
+    users_to_del = get_scoped_users(db, current_user).filter(User.id.in_(user_ids), User.id != current_user.id).all()
     count = len(users_to_del)
     for u in users_to_del:
         db.delete(u)
         
-    db.add(AuditLog(action="User Deleted", user_id=current_user.id, details=f"Bulk deleted {count} users."))
+    db.add(AuditLog(
+        action="User Deleted", 
+        user_id=current_user.id, 
+        organization_id=current_user.organization_id,
+        details=f"Bulk deleted {count} users."
+    ))
     db.commit()
     return {"message": f"Successfully deleted {count} users."}
 
@@ -208,13 +251,19 @@ def bulk_status_users(
     user_ids: List[int],
     status: str,
     db: Session = Depends(get_db),
-    current_user=Depends(RoleChecker(allowed_roles=["Admin", "Super Administrator"]))
+    current_user=Depends(RoleChecker(allowed_roles=["SUPER_ADMIN", "ORGANIZATION_ADMIN"]))
 ):
-    users_to_up = db.query(User).filter(User.id.in_(user_ids)).all()
+    from app.core.scopes import get_scoped_users
+    users_to_up = get_scoped_users(db, current_user).filter(User.id.in_(user_ids)).all()
     for u in users_to_up:
         u.status = status
         
-    db.add(AuditLog(action="Permission Change", user_id=current_user.id, details=f"Bulk updated {len(users_to_up)} users to status: {status}"))
+    db.add(AuditLog(
+        action="Permission Change", 
+        user_id=current_user.id, 
+        organization_id=current_user.organization_id,
+        details=f"Bulk updated {len(users_to_up)} users to status: {status}"
+    ))
     db.commit()
     return {"message": f"Successfully updated status for {len(users_to_up)} users."}
 
@@ -257,13 +306,13 @@ def sync_active_directory(
 @router.post("/csv-import")
 def import_csv_users(
     db: Session = Depends(get_db),
-    current_user=Depends(RoleChecker(allowed_roles=["Admin", "Super Administrator"]))
+    current_user=Depends(RoleChecker(allowed_roles=["SUPER_ADMIN", "ORGANIZATION_ADMIN"]))
 ):
     # Simulates CSV reading
     csv_users = [
         {"email": "peter.parker@supportflow.com", "full_name": "Peter Parker", "title": "IT Administrator", "dept": "IT Support"},
     ]
-    admin_role = db.query(Role).filter(Role.name == "Administrator").first()
+    admin_role = db.query(Role).filter(Role.name == "IT_ADMIN").first()
     synced = 0
     for u in csv_users:
         exists = db.query(User).filter(User.email == u["email"]).first()
@@ -276,6 +325,7 @@ def import_csv_users(
                 role_id=admin_role.id if admin_role else None,
                 job_title=u["title"],
                 department=u["dept"],
+                organization_id=current_user.organization_id,
                 avatar=f"https://api.dicebear.com/7.x/initials/svg?seed={u['full_name']}"
             )
             db.add(new_u)
@@ -288,6 +338,7 @@ def import_csv_users(
 @router.get("/audits", response_model=List[AuditLogResponse])
 def get_audit_logs(
     db: Session = Depends(get_db),
-    current_user=Depends(RoleChecker(allowed_roles=["Admin", "Super Administrator", "Administrator"]))
+    current_user=Depends(RoleChecker(allowed_roles=["SUPER_ADMIN", "ORGANIZATION_ADMIN"]))
 ):
-    return db.query(AuditLog).order_by(AuditLog.created_at.desc()).limit(50).all()
+    from app.core.scopes import get_scoped_audits
+    return get_scoped_audits(db, current_user).order_by(AuditLog.created_at.desc()).limit(50).all()

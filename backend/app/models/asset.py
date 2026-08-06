@@ -50,6 +50,14 @@ class Asset(Base):
     assigned_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     assigned_user = relationship("User", foreign_keys=[assigned_user_id])
 
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
+    department_id = Column(Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True)
+    approval_status = Column(String, default="Pending", nullable=False) # Pending, Approved, Rejected
+    api_token = Column(String, unique=True, index=True, nullable=True)
+
+    organization = relationship("Organization")
+    department_relation = relationship("Department")
+
     # Relationships
     telemetry_history = relationship("Telemetry", back_populates="asset", cascade="all, delete-orphan")
     alerts = relationship("Alert", back_populates="asset", cascade="all, delete-orphan")

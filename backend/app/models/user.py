@@ -69,6 +69,12 @@ class User(Base):
     role_obj = relationship("Role", back_populates="users", lazy="joined")
     preferences = relationship("UserPreferences", back_populates="user", uselist=False, cascade="all, delete-orphan", lazy="joined")
     
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
+    department_id = Column(Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True)
+
+    organization = relationship("Organization")
+    department_relation = relationship("Department")
+
     # Direct custom permissions override
     custom_permissions = relationship("Permission", secondary=user_permissions, lazy="joined")
 

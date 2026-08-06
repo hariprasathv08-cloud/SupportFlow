@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
@@ -147,7 +147,7 @@ if not logger.handlers:
     logger.addHandler(ch)
 
 @router.post("/login", response_model=Token)
-def login(login_data: UserLoginSchema, db: Session = Depends(get_db)):
+def login(login_data: UserLoginSchema, request: Request, db: Session = Depends(get_db)):
     start_total = time.perf_counter()
     
     # 1. Fast db existence check to avoid full table count scan
@@ -206,13 +206,23 @@ def login(login_data: UserLoginSchema, db: Session = Depends(get_db)):
     )
     jwt_time = time.perf_counter() - start_jwt
     
-    # Audit and timestamp login (DB write)
     user.last_login = datetime.utcnow()
     user.last_active = datetime.utcnow()
     
+    from app.models.session_log import SessionLog
+    session_log = SessionLog(
+        user_id=user.id,
+        organization_id=user.organization_id,
+        ip_address=request.client.host if request and request.client else None,
+        user_agent=request.headers.get("user-agent") if request else None,
+        status="Active"
+    )
+    db.add(session_log)
+
     audit = AuditLog(
         action="Login",
         user_id=user.id,
+        organization_id=user.organization_id,
         details=f"Successful login for {user.email}"
     )
     db.add(audit)
@@ -237,7 +247,7 @@ def login(login_data: UserLoginSchema, db: Session = Depends(get_db)):
     }
 
 @router.post("/login-form", response_model=Token)
-def login_form(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login_form(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     start_total = time.perf_counter()
     
     # 1. Fast db existence check to avoid full table count scan
@@ -302,7 +312,24 @@ def login_form(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = D
     # Audit and timestamp login (DB write)
     user.last_login = datetime.utcnow()
     user.last_active = datetime.utcnow()
-    db.add(AuditLog(action="Login", user_id=user.id, details=f"Form OAuth login for {user.email}"))
+    
+    from app.models.session_log import SessionLog
+    session_log = SessionLog(
+        user_id=user.id,
+        organization_id=user.organization_id,
+        ip_address=request.client.host if request and request.client else None,
+        user_agent=request.headers.get("user-agent") if request else None,
+        status="Active"
+    )
+    db.add(session_log)
+
+    audit = AuditLog(
+        action="Login Form",
+        user_id=user.id,
+        organization_id=user.organization_id,
+        details=f"Successful form login for {user.email}"
+    )
+    db.add(audit)
     db.commit()
     
     total_time = time.perf_counter() - start_total
@@ -366,3 +393,24 @@ def refresh_token(data: RefreshTokenRequest, db: Session = Depends(get_db)):
         "full_name": user.full_name,
         "refresh_token": new_refresh_token
     }
+
+@router.post("/logout")
+def logout(db: Session = Depends(get_db), current_user=Depends(get_current_active_user)):
+    from app.models.session_log import SessionLog
+    active_sessions = db.query(SessionLog).filter(
+        SessionLog.user_id == current_user.id,
+        SessionLog.status == "Active"
+    ).all()
+    for sess in active_sessions:
+        sess.status = "Ended"
+        sess.logout_time = datetime.utcnow()
+    
+    audit = AuditLog(
+        action="Logout",
+        user_id=current_user.id,
+        organization_id=current_user.organization_id,
+        details=f"Successful logout for {current_user.email}"
+    )
+    db.add(audit)
+    db.commit()
+    return {"message": "Logged out successfully"}

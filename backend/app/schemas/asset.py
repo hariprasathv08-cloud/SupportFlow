@@ -26,6 +26,10 @@ class AssetBase(BaseModel):
     location: Optional[str] = "HQ"
     warranty: Optional[str] = "Active - 3 Years"
     purchase_date: Optional[datetime] = None
+    organization_id: Optional[int] = None
+    department_id: Optional[int] = None
+    approval_status: Optional[str] = "Pending"
+    api_token: Optional[str] = None
 
 class AssetCreate(BaseModel):
     uuid: Optional[str] = None
@@ -42,6 +46,9 @@ class AssetCreate(BaseModel):
     location: Optional[str] = None
     warranty: Optional[str] = None
     purchase_date: Optional[datetime] = None
+    organization_id: Optional[int] = None
+    department_id: Optional[int] = None
+    approval_status: Optional[str] = "Pending"
 
 class AssetUpdate(BaseModel):
     asset_name: Optional[str] = None
@@ -51,6 +58,10 @@ class AssetUpdate(BaseModel):
     warranty: Optional[str] = None
     purchase_date: Optional[datetime] = None
     status: Optional[str] = None
+    organization_id: Optional[int] = None
+    department_id: Optional[int] = None
+    approval_status: Optional[str] = None
+    assigned_user_id: Optional[int] = None
 
 class AssetResponse(AssetBase):
     id: int

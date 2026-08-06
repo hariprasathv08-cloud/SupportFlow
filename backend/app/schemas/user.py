@@ -31,6 +31,8 @@ class UserBase(BaseModel):
     manager: Optional[str] = None
     is_active: Optional[bool] = True
     status: Optional[str] = "Active"
+    organization_id: Optional[int] = None
+    department_id: Optional[int] = None
 
 class UserCreate(UserBase):
     password: str
@@ -51,6 +53,8 @@ class UserUpdate(BaseModel):
     password: Optional[str] = None
     role: Optional[str] = None
     role_id: Optional[int] = None
+    organization_id: Optional[int] = None
+    department_id: Optional[int] = None
 
 class UserResponse(UserBase):
     id: int

@@ -14,7 +14,7 @@ from app.database import engine, Base, SessionLocal, get_db
 from app.core import scheduler
 from app.core.websocket import manager
 from app.core.security import get_password_hash
-from app.models import User, Role, Permission, Asset, Ticket, Alert, AuditLog, Notification, TicketMessage, UserPreferences
+from app.models import User, Role, Permission, Asset, Ticket, Alert, AuditLog, Notification, TicketMessage, UserPreferences, Organization, Department, SessionLog
 
 # API Routers
 from app.api import auth, system, network, diagnostics, software, tickets, assets, reports, alerts, users, endpoints, notifications, preferences
@@ -25,8 +25,55 @@ Base.metadata.create_all(bind=engine)
 def seed_database():
     db = SessionLocal()
     try:
-        # 1. Seed Roles & Permissions
-        if db.query(Role).count() == 0:
+        # Run DB ALTER TABLE migrations first
+        alters = [
+            ("users", "organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL"),
+            ("users", "department_id", "INTEGER REFERENCES departments(id) ON DELETE SET NULL"),
+            ("assets", "organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL"),
+            ("assets", "department_id", "INTEGER REFERENCES departments(id) ON DELETE SET NULL"),
+            ("assets", "approval_status", "VARCHAR DEFAULT 'Pending'"),
+            ("assets", "api_token", "VARCHAR UNIQUE"),
+            ("tickets", "organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL"),
+            ("tickets", "department_id", "INTEGER REFERENCES departments(id) ON DELETE SET NULL"),
+            ("alerts", "organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL"),
+            ("software", "organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL"),
+            ("software_history", "organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL"),
+            ("audit_logs", "organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL"),
+            ("report_tasks", "organization_id", "INTEGER REFERENCES organizations(id) ON DELETE SET NULL")
+        ]
+        for table, col, col_type in alters:
+            try:
+                db.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
+                db.commit()
+                print(f"[MIGRATION] Added column {col} to {table} table.")
+            except Exception:
+                db.rollback()
+
+        # Seed Organizations
+        if db.query(Organization).count() == 0:
+            print("Seeding multi-tenant organizations...")
+            org1 = Organization(name="Acme Corporation", enrollment_key="acme-key-123")
+            org2 = Organization(name="Globex Corporation", enrollment_key="globex-key-456")
+            db.add(org1)
+            db.add(org2)
+            db.commit()
+
+        # Seed Departments
+        acme = db.query(Organization).filter(Organization.name == "Acme Corporation").first()
+        if acme and db.query(Department).filter(Department.organization_id == acme.id).count() == 0:
+            print("Seeding departments...")
+            d_it = Department(name="IT Support", organization_id=acme.id)
+            d_hr = Department(name="HR", organization_id=acme.id)
+            d_eng = Department(name="Engineering", organization_id=acme.id)
+            d_fin = Department(name="Finance", organization_id=acme.id)
+            db.add(d_it)
+            db.add(d_hr)
+            db.add(d_eng)
+            db.add(d_fin)
+            db.commit()
+
+        # Seed Permissions
+        if db.query(Permission).count() == 0:
             print("Seeding default security permissions...")
             perms_dict = {
                 "view_dashboard": "View metrics dashboard widgets",
@@ -47,7 +94,6 @@ def seed_database():
                 "create_roles": "Configure custom security roles",
                 "delete_roles": "Decommission security roles"
             }
-            
             perms_models = {}
             for name, desc in perms_dict.items():
                 p = Permission(name=name, description=desc)
@@ -57,9 +103,11 @@ def seed_database():
 
             print("Seeding enterprise role templates...")
             roles_defs = {
-                "Super Administrator": list(perms_dict.keys()),
-                "Administrator": list(perms_dict.keys()),
-                "Viewer": ["view_dashboard", "view_tickets"]
+                "SUPER_ADMIN": list(perms_dict.keys()),
+                "ORGANIZATION_ADMIN": list(perms_dict.keys()),
+                "IT_ADMIN": ["view_dashboard", "edit_dashboard", "view_tickets", "assign_tickets", "resolve_tickets", "manage_assets", "delete_assets", "view_reports", "generate_reports", "remote_control", "restart_device", "shutdown_device", "manage_alerts"],
+                "HR_ADMIN": ["manage_users", "view_tickets"],
+                "EMPLOYEE": ["view_dashboard", "view_tickets"]
             }
 
             for role_name, p_names in roles_defs.items():
@@ -68,39 +116,31 @@ def seed_database():
                 db.add(r)
             db.commit()
 
-        # Database cleanup: Purge Technician role and reassign associations
-        tech_roles = db.query(Role).filter(Role.name.in_([
-            "IT Manager", "Network Engineer", "System Administrator", 
-            "SupportFlow Technician", "Security Analyst", "Asset Manager", "Auditor", "Technician"
-        ])).all()
-        
-        tech_role_ids = [r.id for r in tech_roles]
-        if tech_role_ids:
-            print("Cleaning up custom/legacy technician roles and reassigning tickets...")
-            # Reassign any tickets assigned to legacy technician users to None (unassigned)
-            tickets_assigned = db.query(Ticket).filter(Ticket.assigned_to_id.in_(
-                db.query(User.id).filter(User.role_id.in_(tech_role_ids))
-            )).all()
-            for tk in tickets_assigned:
-                tk.assigned_to_id = None
-            
-            # Delete mock user 'tech@supportflow.com'
-            tech_user = db.query(User).filter(User.email == "tech@supportflow.com").first()
-            if tech_user:
-                db.delete(tech_user)
-            
-            # Reassign other custom staff users to Administrator role
-            admin_role_obj = db.query(Role).filter(Role.name == "Administrator").first()
-            other_users = db.query(User).filter(User.role_id.in_(tech_role_ids)).all()
-            for u in other_users:
-                if admin_role_obj:
-                    u.role_id = admin_role_obj.id
-                else:
-                    db.delete(u)
-            
-            # Delete legacy role items
-            for r in tech_roles:
-                db.delete(r)
+        # Seed default users
+        acme = db.query(Organization).filter(Organization.name == "Acme Corporation").first()
+        if acme and db.query(User).count() == 0:
+            print("Seeding default users...")
+            r_super = db.query(Role).filter(Role.name == "SUPER_ADMIN").first()
+            r_org = db.query(Role).filter(Role.name == "ORGANIZATION_ADMIN").first()
+            r_it = db.query(Role).filter(Role.name == "IT_ADMIN").first()
+            r_hr = db.query(Role).filter(Role.name == "HR_ADMIN").first()
+            r_emp = db.query(Role).filter(Role.name == "EMPLOYEE").first()
+
+            d_it = db.query(Department).filter(Department.name == "IT Support", Department.organization_id == acme.id).first()
+            d_hr = db.query(Department).filter(Department.name == "HR", Department.organization_id == acme.id).first()
+            d_eng = db.query(Department).filter(Department.name == "Engineering", Department.organization_id == acme.id).first()
+
+            hashed_pw = get_password_hash("password")
+
+            users_to_seed = [
+                User(email="superadmin@supportflow.com", username="superadmin", hashed_password=hashed_pw, full_name="Super Admin", role_id=r_super.id if r_super else None),
+                User(email="orgadmin@supportflow.com", username="orgadmin", hashed_password=hashed_pw, full_name="Acme Org Admin", role_id=r_org.id if r_org else None, organization_id=acme.id),
+                User(email="itadmin@supportflow.com", username="itadmin", hashed_password=hashed_pw, full_name="IT Analyst", role_id=r_it.id if r_it else None, organization_id=acme.id, department_id=d_it.id if d_it else None, department="IT Support"),
+                User(email="hradmin@supportflow.com", username="hradmin", hashed_password=hashed_pw, full_name="HR Specialist", role_id=r_hr.id if r_hr else None, organization_id=acme.id, department_id=d_hr.id if d_hr else None, department="HR"),
+                User(email="employee@supportflow.com", username="employee", hashed_password=hashed_pw, full_name="Engineer User", role_id=r_emp.id if r_emp else None, organization_id=acme.id, department_id=d_eng.id if d_eng else None, department="Engineering")
+            ]
+            for u in users_to_seed:
+                db.add(u)
             db.commit()
 
     except Exception as e:

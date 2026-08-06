@@ -50,8 +50,7 @@ async def get_current_user_reports(
         raise HTTPException(status_code=401, detail="Could not validate credentials")
     return user
 
-def is_admin(user) -> bool:
-    return user.role in ["Admin", "Super Administrator", "Administrator"]
+from app.core.scopes import get_scoped_assets, get_scoped_tickets, get_scoped_software, get_scoped_alerts, get_scoped_users
 
 # Endpoint to fetch counts for disabling report options
 @router.get("/status")
@@ -59,20 +58,11 @@ def get_reports_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_reports)
 ):
-    if not is_admin(current_user):
-        user_assets = db.query(Asset).filter(Asset.assigned_user_id == current_user.id).all()
-        user_asset_ids = [a.id for a in user_assets]
-        total_assets = len(user_assets)
-        total_tickets = db.query(Ticket).filter(Ticket.created_by_id == current_user.id).count()
-        total_software = db.query(Software).filter(Software.asset_id.in_(user_asset_ids)).count() if user_asset_ids else 0
-        total_alerts = db.query(Alert).filter(Alert.asset_id.in_(user_asset_ids)).count() if user_asset_ids else 0
-        total_users = 1
-    else:
-        total_assets = db.query(Asset).count()
-        total_tickets = db.query(Ticket).count()
-        total_software = db.query(Software).count()
-        total_alerts = db.query(Alert).count()
-        total_users = db.query(User).count()
+    total_assets = get_scoped_assets(db, current_user).count()
+    total_tickets = get_scoped_tickets(db, current_user).count()
+    total_software = get_scoped_software(db, current_user).count()
+    total_alerts = get_scoped_alerts(db, current_user).count()
+    total_users = get_scoped_users(db, current_user).count()
     
     dashboard_available = (total_assets > 0 or total_tickets > 0 or total_users > 0)
     
@@ -114,39 +104,23 @@ def run_report_generation(task_id: str, req_data: dict, user_id: int):
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             return
-        is_admin_user = user.role in ["Admin", "Super Administrator", "Administrator"]
         
-        if not is_admin_user:
-            user_assets = db.query(Asset).filter(Asset.assigned_user_id == user_id).all()
-            user_asset_ids = [a.id for a in user_assets]
-        else:
-            user_assets = []
-            user_asset_ids = []
+        from app.core.scopes import get_scoped_assets, get_scoped_tickets, get_scoped_software, get_scoped_alerts, get_scoped_users
 
         def get_assets_query():
-            if is_admin_user:
-                return db.query(Asset)
-            return db.query(Asset).filter(Asset.assigned_user_id == user_id)
+            return get_scoped_assets(db, user)
             
         def get_tickets_query():
-            if is_admin_user:
-                return db.query(Ticket)
-            return db.query(Ticket).filter(Ticket.created_by_id == user_id)
+            return get_scoped_tickets(db, user)
             
         def get_alerts_query():
-            if is_admin_user:
-                return db.query(Alert)
-            return db.query(Alert).filter(Alert.asset_id.in_(user_asset_ids)) if user_asset_ids else db.query(Alert).filter(Alert.id == -1)
+            return get_scoped_alerts(db, user)
             
         def get_software_query():
-            if is_admin_user:
-                return db.query(Software)
-            return db.query(Software).filter(Software.asset_id.in_(user_asset_ids)) if user_asset_ids else db.query(Software).filter(Software.id == -1)
+            return get_scoped_software(db, user)
             
         def get_users_query():
-            if is_admin_user:
-                return db.query(User)
-            return db.query(User).filter(User.id == user_id)
+            return get_scoped_users(db, user)
 
         # Create output directory
         out_dir = os.path.join(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "generated_reports")
