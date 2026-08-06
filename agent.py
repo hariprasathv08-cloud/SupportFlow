@@ -21,7 +21,8 @@ if IS_WINDOWS:
         wmi = None
 
 # Host backend address
-API_URL = os.environ.get("SUPPORTFLOW_API_URL", "http://127.0.0.1:8000/api/v1/agents/telemetry")
+API_BASE_URL = os.environ.get("SUPPORTFLOW_API_BASE_URL", "https://supportflow-1.onrender.com")
+API_URL = f"{API_BASE_URL.rstrip('/')}/api/v1/agents/telemetry"
 UUID_FILE = os.path.join(os.path.abspath(os.path.dirname(__file__)), ".agent_uuid")
 
 def get_or_create_uuid() -> str:
@@ -330,26 +331,39 @@ def main():
     import urllib.request
     import json
 
-    print(f"HelpDesk X Endpoint Monitoring Agent started. Unique UUID: {get_or_create_uuid()}")
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] SupportFlow Endpoint Monitoring Agent started.")
+    print(f"Agent Device UUID: {get_or_create_uuid()}")
+    print(f"Target API Base URL: {API_BASE_URL}")
+    print(f"Target Endpoint URL: {API_URL}")
     print("Collecting telemetry data and syncing to backend server...")
     
     while True:
         try:
             payload = collect_telemetry()
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Telemetry collected successfully: CPU={payload['cpu_usage']}%, RAM={payload['ram_usage']}%, processes={len(payload['processes'])} active.")
+            
             req = urllib.request.Request(
                 API_URL, 
                 data=json.dumps(payload).encode('utf-8'),
-                headers={'Content-Type': 'application/json'}
+                headers={
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'SupportFlowAgent/1.0'
+                }
             )
-            with urllib.request.urlopen(req) as response:
+            
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Attempting sync to {API_URL}...")
+            with urllib.request.urlopen(req, timeout=10) as response:
                 if response.status == 200:
-                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Telemetry payload successfully synced.")
+                    resp_data = response.read().decode('utf-8')
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Telemetry payload successfully synced. Server response: {resp_data}")
                 else:
-                    print(f"Backend returned non-200 code: {response.status}")
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] WARNING: Backend returned non-200 status code: {response.status}")
+        except urllib.error.HTTPError as he:
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] HTTP ERROR: Sync failed with status code {he.code}: {he.reason}. Response details: {he.read().decode('utf-8', errors='ignore')}")
         except urllib.error.URLError as ue:
-            print(f"Connection to backend failed (URL: {API_URL}): {ue.reason}. Retrying in 15s...")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] CONNECTION FAILED: Unable to reach backend (URL: {API_URL}). Reason: {ue.reason}. Re-attempting sync in 15 seconds...")
         except Exception as e:
-            print(f"Error collecting or sending telemetry: {e}")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] UNEXPECTED ERROR: {e}")
             
         time.sleep(15)
 
