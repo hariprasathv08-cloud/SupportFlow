@@ -1,8 +1,9 @@
 import asyncio
+import os
 import json
 from typing import Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -277,3 +278,19 @@ app.include_router(alerts.router, prefix=f"{settings.API_V1_STR}/alerts", tags=[
 app.include_router(users.router, prefix=f"{settings.API_V1_STR}/users", tags=["Users Management"])
 app.include_router(endpoints.router, prefix=f"{settings.API_V1_STR}/agents", tags=["Remote Agents Monitoring"])
 app.include_router(notifications.router, prefix=f"{settings.API_V1_STR}/notifications", tags=["Notifications"])
+
+# Serve React frontend static files
+frontend_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "frontend", "dist")
+
+@app.exception_handler(404)
+async def custom_404_handler(request, __):
+    if not request.url.path.startswith("/api") and not request.url.path.startswith("/docs") and not request.url.path.startswith("/redoc"):
+        index_path = os.path.join(frontend_dir, "index.html")
+        if os.path.exists(index_path):
+            return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="Not Found")
+
+if os.path.exists(frontend_dir):
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+
