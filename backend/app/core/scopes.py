@@ -7,6 +7,13 @@ from app.models.user import User
 from app.models.audit import AuditLog
 from app.models.department import Department
 from app.models.organization import Organization
+from app.models.session_log import SessionLog
+
+def get_scoped_session_logs(db: Session, user: User):
+    role_name = user.role.name if hasattr(user.role, "name") else str(user.role)
+    if role_name == "SUPER_ADMIN":
+        return db.query(SessionLog)
+    return db.query(SessionLog).join(User).filter(User.organization_id == user.organization_id)
 
 def get_scoped_assets(db: Session, user: User):
     # Retrieve role name

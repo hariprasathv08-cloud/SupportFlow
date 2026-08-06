@@ -198,17 +198,17 @@ def get_audit_logs_list(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_active_user)
 ):
-    from app.core.scopes import get_scoped_audits
-    return get_scoped_audits(db, current_user).order_by(AuditLog.created_at.desc()).all()
+    from app.core.scopes import get_scoped_audit_logs
+    return get_scoped_audit_logs(db, current_user).order_by(AuditLog.created_at.desc()).all()
 
 @router.get("/session-logs/list")
 def get_session_logs(
     db: Session = Depends(get_db),
     current_user=Depends(PermissionChecker("manage_users"))
 ):
-    from app.core.scopes import get_scoped_sessions
+    from app.core.scopes import get_scoped_session_logs
     from app.models.session_log import SessionLog
-    sessions = get_scoped_sessions(db, current_user).order_by(SessionLog.created_at.desc()).limit(100).all()
+    sessions = get_scoped_session_logs(db, current_user).order_by(SessionLog.created_at.desc()).limit(100).all()
     return [
         {
             "id": s.id,
