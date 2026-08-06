@@ -208,6 +208,9 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
             try:
                 packet = json.loads(data)
                 packet_type = packet.get("type")
+                if packet_type == "ping":
+                    await websocket.send_json({"type": "pong"})
+                    continue
                 if packet_type == "typing":
                     ticket_id = packet.get("ticket_id")
                     typing_status = packet.get("typing")

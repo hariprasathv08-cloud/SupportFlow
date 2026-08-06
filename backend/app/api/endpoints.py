@@ -363,8 +363,16 @@ async def post_telemetry(
     active_users = db.query(User).filter(User.is_active == True).all()
     for u in active_users:
         u_role = u.role.name if hasattr(u.role, "name") else str(u.role)
-        if u_role == "SUPER_ADMIN" or (u.organization_id == asset.organization_id and (u_role in ["ORGANIZATION_ADMIN", "IT_ADMIN", "HR_ADMIN"] or asset.assigned_user_id == u.id)):
+        # SUPER_ADMIN gets everything globally.
+        # ORGANIZATION_ADMIN, IT_ADMIN, HR_ADMIN get all devices within their organization.
+        # Viewer/EMPLOYEE only get updates for their explicitly assigned device.
+        if u_role == "SUPER_ADMIN":
             await manager.send_to_user(u.id, msg)
+        elif u.organization_id == asset.organization_id:
+            if u_role in ["ORGANIZATION_ADMIN", "IT_ADMIN", "HR_ADMIN"]:
+                await manager.send_to_user(u.id, msg)
+            elif asset.assigned_user_id == u.id:
+                await manager.send_to_user(u.id, msg)
 
     return telemetry
 

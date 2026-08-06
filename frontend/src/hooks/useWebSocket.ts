@@ -45,7 +45,6 @@ const playNotificationSound = (type: keyof NotificationSoundSettings) => {
     if (!soundSettings.sound_enabled) return;
     if (!soundSettings[type]) return; // Disabled for this specific notification type
     
-    // Only load and play when allowed (no preload/playback when sound is disabled)
     const audio = new Audio("https://actions.google.com/sounds/v1/alerts/chime.ogg");
     audio.volume = soundSettings.volume / 100;
     audio.play().catch((e) => console.log("Audio play blocked by browser:", e));
@@ -54,145 +53,214 @@ const playNotificationSound = (type: keyof NotificationSoundSettings) => {
   }
 };
 
-export function useWebSocket(selectedDeviceId: number | null = null) {
-  // Store metrics keyed by device_id (fallback local has device_id 0 or null)
-  const [devicesMetrics, setDevicesMetrics] = useState<Record<number, SystemMetrics>>({});
-  const [histories, setHistories] = useState<Record<number, { cpu: number[]; ram: number[] }>>({});
-  const [connected, setConnected] = useState(false);
-  const socketRef = useRef<WebSocket | null>(null);
+// Module-level globals for shared WebSocket singleton state
+let globalSocket: WebSocket | null = null;
+let globalConnected = false;
+let globalStatus: "connecting" | "connected" | "unavailable" = "connecting";
+let globalDevicesMetrics: Record<number, SystemMetrics> = {};
+let globalHistories: Record<number, { cpu: number[]; ram: number[] }> = {};
+const listeners = new Set<() => void>();
 
-  useEffect(() => {
-    let reconnectTimeout: number;
+let reconnectDelay = 1000;
+let connectionTimeoutId: any = null;
+let heartbeatIntervalId: any = null;
 
-    const connect = () => {
-      const token = localStorage.getItem("token") || "";
-      let wsUrl = "";
-      const api_url = import.meta.env.VITE_API_URL || "";
-      if (api_url) {
-        try {
-          const url = new URL(api_url);
-          const wsProtocol = url.protocol === "https:" ? "wss:" : "ws:";
-          wsUrl = `${wsProtocol}//${url.host}/api/ws?token=${token}`;
-        } catch {
-          const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-          const host = import.meta.env.VITE_WS_URL || "127.0.0.1:8000";
-          wsUrl = `${protocol}//${host}/api/ws?token=${token}`;
+function notifyListeners() {
+  for (const listener of listeners) {
+    try {
+      listener();
+    } catch (e) {
+      console.error("[WS] Listener error:", e);
+    }
+  }
+}
+
+function initGlobalSocket() {
+  if (globalSocket && (globalSocket.readyState === WebSocket.CONNECTING || globalSocket.readyState === WebSocket.OPEN)) {
+    return; // Already open or opening
+  }
+
+  const token = localStorage.getItem("token") || "";
+  if (!token) {
+    globalStatus = "connecting";
+    globalConnected = false;
+    notifyListeners();
+    return;
+  }
+
+  const isProd = window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1";
+  const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  
+  let host = "localhost:8000";
+  if (isProd) {
+    host = "supportflow-1.onrender.com";
+  } else if (import.meta.env.VITE_WS_URL) {
+    host = import.meta.env.VITE_WS_URL;
+  }
+  
+  const wsUrl = `${wsProtocol}//${host}/api/ws?token=${token}`;
+  
+  console.log(`[WS] Connecting to: ${wsUrl}`);
+  globalStatus = "connecting";
+  notifyListeners();
+
+  clearTimeout(connectionTimeoutId);
+  connectionTimeoutId = setTimeout(() => {
+    if (globalStatus === "connecting") {
+      console.warn("[WS] Unreachable backend. Setting status to unavailable.");
+      globalStatus = "unavailable";
+      notifyListeners();
+    }
+  }, 5000);
+
+  try {
+    const socket = new WebSocket(wsUrl);
+    globalSocket = socket;
+
+    socket.onopen = () => {
+      console.log("[WS] Connected successfully.");
+      console.log("[WS] Authenticated successfully with token.");
+      clearTimeout(connectionTimeoutId);
+      globalConnected = true;
+      globalStatus = "connected";
+      reconnectDelay = 1000;
+      notifyListeners();
+
+      // Setup Render-safe heartbeat to prevent idle disconnections
+      clearInterval(heartbeatIntervalId);
+      heartbeatIntervalId = setInterval(() => {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: "ping" }));
+          console.log("[WS] Sent heartbeat ping to keep connection alive.");
         }
-      } else {
-        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const host = import.meta.env.VITE_WS_URL || "127.0.0.1:8000";
-        wsUrl = `${protocol}//${host}/api/ws?token=${token}`;
-      }
+      }, 20000);
+    };
 
-      console.log(`Connecting to WebSocket: ${wsUrl}`);
-      const socket = new WebSocket(wsUrl);
-      socketRef.current = socket;
-
-      socket.onopen = () => {
-        console.log("WebSocket connected.");
-        setConnected(true);
-      };
-
-      socket.onmessage = (event) => {
-        try {
-          const packet = JSON.parse(event.data);
+    socket.onmessage = (event) => {
+      try {
+        const packet = JSON.parse(event.data);
+        if (packet.type === "pong") {
+          console.log("[WS] Heartbeat pong received.");
+          return;
+        }
+        
+        if (packet.type === "metrics_update") {
+          const data: SystemMetrics = packet.data;
+          const devId = packet.device_id || 0;
           
-          if (packet.type === "metrics_update") {
-            const data: SystemMetrics = packet.data;
-            const devId = packet.device_id || 0; // fallback to 0 if not set
-            
-            setDevicesMetrics((prev) => ({
-              ...prev,
-              [devId]: data
-            }));
-
-            setHistories((prev) => {
-              const prevHist = prev[devId] || { cpu: [], ram: [] };
-              const updatedCpu = [...prevHist.cpu, data.cpu.usage_percent].slice(-20);
-              const updatedRam = [...prevHist.ram, data.ram.percent].slice(-20);
-              return {
-                ...prev,
-                [devId]: { cpu: updatedCpu, ram: updatedRam }
-              };
-            });
-          } else if (packet.type === "new_alert") {
-            if (packet.alert.severity === "Critical") {
-              playNotificationSound("system_alert");
-            }
-            
-            // Trigger a custom event for toaster to pick up
-            const customEvent = new CustomEvent("sys_alert", { detail: packet.alert });
-            window.dispatchEvent(customEvent);
-          } else if (packet.type === "alert_resolved") {
-            const customEvent = new CustomEvent("sys_alert_resolved", { detail: packet.alert_id });
-            window.dispatchEvent(customEvent);
-          } else if (packet.type === "new_ticket") {
-            const userName = localStorage.getItem("user_name");
-            if (packet.ticket.created_by !== userName) {
-              playNotificationSound("ticket_created");
-              if (Notification.permission === "granted") {
-                new Notification("New Support Ticket", {
-                  body: `Ticket #${1000 + packet.ticket.id} created by ${packet.ticket.created_by}: ${packet.ticket.title}`
-                });
-              }
-            }
-          } else if (packet.type === "ticket_update") {
-            const isResolved = packet.status === "Resolved";
-            playNotificationSound(isResolved ? "ticket_resolved" : "ticket_updated");
+          globalDevicesMetrics[devId] = data;
+          
+          const prevHist = globalHistories[devId] || { cpu: [], ram: [] };
+          const updatedCpu = [...prevHist.cpu, data.cpu.usage_percent].slice(-20);
+          const updatedRam = [...prevHist.ram, data.ram.percent].slice(-20);
+          globalHistories[devId] = { cpu: updatedCpu, ram: updatedRam };
+          
+          notifyListeners();
+        } else if (packet.type === "new_alert") {
+          if (packet.alert.severity === "Critical") {
+            playNotificationSound("system_alert");
+          }
+          const customEvent = new CustomEvent("sys_alert", { detail: packet.alert });
+          window.dispatchEvent(customEvent);
+        } else if (packet.type === "alert_resolved") {
+          const customEvent = new CustomEvent("sys_alert_resolved", { detail: packet.alert_id });
+          window.dispatchEvent(customEvent);
+        } else if (packet.type === "new_ticket") {
+          const userName = localStorage.getItem("user_name");
+          if (packet.ticket.created_by !== userName) {
+            playNotificationSound("ticket_created");
             if (Notification.permission === "granted") {
-              new Notification(isResolved ? "Ticket Resolved" : "Ticket Updated", {
-                body: `Ticket #${1000 + packet.ticket_id} status changed to ${packet.status}.`
+              new Notification("New Support Ticket", {
+                body: `Ticket #${1000 + packet.ticket.id} created by ${packet.ticket.created_by}: ${packet.ticket.title}`
               });
             }
-          } else if (packet.type === "ticket_message") {
-            const userName = localStorage.getItem("user_name");
-            if (packet.message.sender !== userName) {
-              playNotificationSound("chat_message");
-              if (Notification.permission === "granted") {
-                new Notification(`Message from ${packet.message.sender}`, {
-                  body: packet.message.message
-                });
-              }
+          }
+        } else if (packet.type === "ticket_update") {
+          const isResolved = packet.status === "Resolved";
+          playNotificationSound(isResolved ? "ticket_resolved" : "ticket_updated");
+          if (Notification.permission === "granted") {
+            new Notification(isResolved ? "Ticket Resolved" : "Ticket Updated", {
+              body: `Ticket #${1000 + packet.ticket_id} status changed to ${packet.status}.`
+            });
+          }
+        } else if (packet.type === "ticket_message") {
+          const userName = localStorage.getItem("user_name");
+          if (packet.message.sender !== userName) {
+            playNotificationSound("chat_message");
+            if (Notification.permission === "granted") {
+              new Notification(`Message from ${packet.message.sender}`, {
+                body: packet.message.message
+              });
             }
           }
-        } catch (err) {
-          console.error("Error parsing WebSocket message:", err);
         }
-      };
-
-      socket.onclose = () => {
-        console.log("WebSocket disconnected. Attempting reconnection...");
-        setConnected(false);
-        reconnectTimeout = window.setTimeout(connect, 3000);
-      };
-
-      socket.onerror = (err) => {
-        console.error("WebSocket encountered an error:", err);
-        socket.close();
-      };
+      } catch (err) {
+        console.error("[WS] Error parsing message:", err);
+      }
     };
 
-    connect();
+    socket.onclose = () => {
+      console.log("[WS] Disconnected from server.");
+      globalConnected = false;
+      clearInterval(heartbeatIntervalId);
+      
+      console.log(`[WS] Reconnecting... Delayed by ${reconnectDelay}ms`);
+      globalStatus = "connecting";
+      notifyListeners();
+      
+      const delay = reconnectDelay;
+      reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+      
+      setTimeout(() => {
+        initGlobalSocket();
+      }, delay);
+    };
+
+    socket.onerror = (err) => {
+      console.error("[WS] WebSocket encountered error:", err);
+      socket.close();
+    };
+
+  } catch (e) {
+    console.error("[WS] Exception starting WebSocket:", e);
+    globalConnected = false;
+    globalStatus = "unavailable";
+    notifyListeners();
+  }
+}
+
+export function useWebSocket(selectedDeviceId: number | null = null) {
+  const [, setTrigger] = useState(0);
+  const token = localStorage.getItem("token") || "";
+
+  useEffect(() => {
+    const listener = () => setTrigger((t) => t + 1);
+    listeners.add(listener);
+    
+    initGlobalSocket();
 
     return () => {
-      if (socketRef.current) {
-        socketRef.current.close();
-      }
-      clearTimeout(reconnectTimeout);
+      listeners.delete(listener);
     };
-  }, []);
+  }, [token]);
 
-  // Helpers to get metrics for the selected device
-  const metrics = selectedDeviceId ? (devicesMetrics[selectedDeviceId] || null) : null;
-  const cpuHistory = selectedDeviceId ? (histories[selectedDeviceId]?.cpu || []) : [];
-  const ramHistory = selectedDeviceId ? (histories[selectedDeviceId]?.ram || []) : [];
+  useEffect(() => {
+    if (selectedDeviceId !== null && globalConnected) {
+      console.log(`[WS] Device subscribed. Tracking ID: ${selectedDeviceId}`);
+    }
+  }, [selectedDeviceId, globalConnected]);
+
+  const metrics = selectedDeviceId ? (globalDevicesMetrics[selectedDeviceId] || null) : null;
+  const cpuHistory = selectedDeviceId ? (globalHistories[selectedDeviceId]?.cpu || []) : [];
+  const ramHistory = selectedDeviceId ? (globalHistories[selectedDeviceId]?.ram || []) : [];
 
   return { 
     metrics, 
     cpuHistory, 
     ramHistory, 
-    connected,
-    devicesMetrics,
-    histories
+    connected: globalConnected,
+    status: globalStatus,
+    devicesMetrics: globalDevicesMetrics,
+    histories: globalHistories
   };
 }

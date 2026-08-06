@@ -21,9 +21,18 @@ export default function Layout() {
   const userName = localStorage.getItem("user_name") || "General User";
   const role = localStorage.getItem("role") || "Viewer";
 
-  const { metrics, connected } = useWebSocket();
+  const { metrics, connected, status } = useWebSocket();
   const [toasts, setToasts] = useState<ToastAlert[]>([]);
   const { isOffline, setIsOffline, isStarting } = useBackendStatus();
+  const [showConnectedSuccess, setShowConnectedSuccess] = useState(false);
+
+  useEffect(() => {
+    if (status === "connected") {
+      setShowConnectedSuccess(true);
+      const timer = setTimeout(() => setShowConnectedSuccess(false), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [status]);
 
   useEffect(() => {
     // Auth guard check
@@ -104,11 +113,25 @@ export default function Layout() {
                 {isStarting ? "Backend is starting..." : "Working Offline. Some live features are temporarily unavailable."}
               </span>
             </div>
-          ) : !connected ? (
+          ) : status === "connected" && showConnectedSuccess ? (
+            <div className="mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 text-emerald-500 text-xs font-semibold flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 shrink-0 text-emerald-500" />
+                Real-time service connected
+              </span>
+            </div>
+          ) : status === "connecting" ? (
             <div className="mb-4 bg-blue-500/10 border border-blue-500/30 rounded-xl p-3 text-blue-500 text-xs font-semibold flex items-center justify-between animate-pulse">
               <span className="flex items-center gap-2">
                 <Info className="h-4 w-4 shrink-0" />
                 Connecting to real-time service...
+              </span>
+            </div>
+          ) : status === "unavailable" ? (
+            <div className="mb-4 bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-red-500 text-xs font-semibold flex items-center justify-between animate-pulse">
+              <span className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-red-500 shrink-0" />
+                Realtime service unavailable
               </span>
             </div>
           ) : null}
