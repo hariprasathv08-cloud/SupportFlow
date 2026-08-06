@@ -283,7 +283,8 @@ async def custom_404_handler(request, __):
         index_path = os.path.join(frontend_dir, "index.html")
         if os.path.exists(index_path):
             return FileResponse(index_path)
-    raise HTTPException(status_code=404, detail="Not Found")
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=404, content={"detail": "Not Found"})
 
 if os.path.exists(frontend_dir):
     from fastapi.staticfiles import StaticFiles
