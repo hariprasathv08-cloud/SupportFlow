@@ -89,7 +89,7 @@ export default function EmployeeDashboard() {
       <div className="bg-slate-900/60 border border-slate-800/80 p-6 rounded-card backdrop-blur-md flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-            My Support Portal
+            SupportFlow Employee Portal
           </h1>
           <p className="text-xs text-slate-400 mt-1">
             Welcome, {profile?.full_name || "User"}. Report issues and track requests below.

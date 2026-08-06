@@ -380,7 +380,7 @@ export default function Reports() {
             <div className="flex flex-col gap-3">
               {[
                 { label: "Managed Workstations", key: "assets", icon: Database },
-                { label: "HelpDesk Tickets", key: "tickets", icon: Ticket },
+                { label: "SupportFlow Tickets", key: "tickets", icon: Ticket },
                 { label: "Audited Software Packages", key: "software", icon: Layers },
                 { label: "Security System Alerts", key: "alerts", icon: AlertTriangle },
                 { label: "Administrator Profiles", key: "users", icon: Users },
@@ -692,7 +692,7 @@ export default function Reports() {
                   </label>
                   <input 
                     type="text"
-                    placeholder="e.g. admin@helpdeskx.com, audit@helpdeskx.com"
+                    placeholder="e.g. admin@supportflow.com, audit@supportflow.com"
                     value={emailsStr}
                     onChange={(e) => setEmailsStr(e.target.value)}
                     className="bg-slate-50 dark:bg-slate-850 border border-slate-250 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-800 dark:text-white outline-none focus:border-blue-500 placeholder-slate-400"

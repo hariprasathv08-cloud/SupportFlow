@@ -24,7 +24,7 @@ def add_header_footer(canvas, doc):
     canvas.saveState()
     canvas.setFont('Helvetica-Bold', 8)
     canvas.setFillColor(DARK)
-    canvas.drawString(54, 750, "HelpDesk X - Enterprise Systems Report")
+    canvas.drawString(54, 750, "SupportFlow - Enterprise Systems Report")
     
     canvas.setFont('Helvetica', 8)
     canvas.setFillColor(colors.HexColor('#64748B'))
@@ -165,7 +165,7 @@ def generate_dashboard_pdf(summary_data: Dict[str, Any], recent_tickets: List[Li
     summary_headers = ["Metric Category", "Count / Value", "Status"]
     summary_rows = [
         ["Total Assets Monitored", str(summary_data.get("total_assets", 0)), "Active"],
-        ["HelpDesk Tickets", f"{summary_data.get('total_tickets', 0)} ({summary_data.get('resolved_tickets', 0)} Resolved)", "Monitoring"],
+        ["SupportFlow Tickets", f"{summary_data.get('total_tickets', 0)} ({summary_data.get('resolved_tickets', 0)} Resolved)", "Monitoring"],
         ["Critical Active Alerts", str(summary_data.get("critical_alerts", 0)), "Action Required" if summary_data.get("critical_alerts", 0) > 0 else "Normal"],
         ["Registered Console Users", str(summary_data.get("total_users", 0)), "Active"]
     ]
@@ -317,9 +317,9 @@ def send_report_email(to_emails: List[str], attachment_paths: List[str], report_
         msg = MIMEMultipart()
         msg['From'] = smtp_user
         msg['To'] = ", ".join(to_emails)
-        msg['Subject'] = f"HelpDesk X Generated Report: {report_title}"
+        msg['Subject'] = f"SupportFlow Generated Report: {report_title}"
 
-        body = f"Hello,\n\nPlease find attached the requested report: {report_title}.\n\nBest regards,\nHelpDesk X Team"
+        body = f"Hello,\n\nPlease find attached the requested report: {report_title}.\n\nBest regards,\nSupportFlow IT Support"
         msg.attach(MIMEText(body, 'plain'))
 
         for path in attachment_paths:
@@ -411,7 +411,7 @@ def generate_complete_enterprise_pdf(db, date_range: str) -> bytes:
     
     # Cover page
     story.append(Spacer(1, 100))
-    story.append(Paragraph("HELPDESK X ENTERPRISE REPORT", title_style))
+    story.append(Paragraph("SUPPORTFLOW ENTERPRISE REPORT", title_style))
     story.append(Paragraph("Complete Infrastructure, Security, and Incident Diagnostic Analysis", ParagraphStyle('Sub', parent=body_style, fontSize=12, textColor=colors.HexColor('#64748B'))))
     story.append(Spacer(1, 20))
     story.append(Paragraph(f"Analysis Period: {date_range.upper()}", body_style))
@@ -423,7 +423,7 @@ def generate_complete_enterprise_pdf(db, date_range: str) -> bytes:
     
     # Executive Summary
     story.append(Paragraph("Executive Summary", h1_style))
-    story.append(Paragraph("This report compiles real-time telemetry metrics, physical asset directories, incident ticketing logs, security vulnerabilities, and operator audits from the HelpDesk X PostgreSQL central engine. The current operational environment is monitored for latency issues, software version mismatch anomalies, and hardware health degradations.", body_style))
+    story.append(Paragraph("This report compiles real-time telemetry metrics, physical asset directories, incident ticketing logs, security vulnerabilities, and operator audits from the SupportFlow PostgreSQL central engine. The current operational environment is monitored for latency issues, software version mismatch anomalies, and hardware health degradations.", body_style))
     
     # KPIs
     story.append(Paragraph("Key Performance Indicators (KPIs)", h1_style))
@@ -431,7 +431,7 @@ def generate_complete_enterprise_pdf(db, date_range: str) -> bytes:
     kpi_rows = [
         ["Total Devices Managed", str(total_assets), "Optimal" if total_assets > 0 else "Incomplete"],
         ["Active User Profiles", str(total_users), "Verified"],
-        ["HelpDesk Backlog", f"{total_tickets - resolved_tickets} Unresolved", "Warning" if (total_tickets - resolved_tickets) > 5 else "Healthy"],
+        ["SupportFlow Backlog", f"{total_tickets - resolved_tickets} Unresolved", "Warning" if (total_tickets - resolved_tickets) > 5 else "Healthy"],
         ["Threat Alerts Triggered", str(active_alerts), "Critical Action Required" if active_alerts > 0 else "Secure"],
         ["Unique Software Audited", str(total_software), "Standardized"],
         ["Audit Trails Tracked", str(total_audits), "Logged"]
@@ -492,7 +492,7 @@ def generate_complete_enterprise_pdf(db, date_range: str) -> bytes:
     story.append(PageBreak())
     
     # Tickets
-    story.append(Paragraph("HelpDesk Incident Ledger", h1_style))
+    story.append(Paragraph("SupportFlow Incident Ledger", h1_style))
     tickets = db.query(Ticket).limit(20).all()
     ticket_headers = ["ID", "Title", "Priority", "Status", "Assigned To"]
     t_ticket_data = [[Paragraph(h, header_cell_style) for h in ticket_headers]]
@@ -518,7 +518,7 @@ def generate_complete_enterprise_excel(db, date_range: str) -> bytes:
     # 1. Summary sheet
     ws_summary = wb.active
     ws_summary.title = "Executive Summary"
-    ws_summary.append(["HelpDesk X Enterprise Executive Report"])
+    ws_summary.append(["SupportFlow Enterprise Executive Report"])
     ws_summary.append(["Generated At", datetime.now().strftime('%Y-%m-%d %H:%M')])
     ws_summary.append(["Date Range", date_range])
     ws_summary.append([])
@@ -532,7 +532,7 @@ def generate_complete_enterprise_excel(db, date_range: str) -> bytes:
     
     ws_summary.append(["Operational Metric", "Total Count", "Status"])
     ws_summary.append(["Managed Endpoints", db.query(Asset).count(), "Monitoring"])
-    ws_summary.append(["HelpDesk Incidents", db.query(Ticket).count(), "Active"])
+    ws_summary.append(["SupportFlow Incidents", db.query(Ticket).count(), "Active"])
     ws_summary.append(["Active Security Alerts", db.query(Alert).filter(Alert.resolved == False).count(), "Action Required"])
     ws_summary.append(["Audited Operator Log Entries", db.query(AuditLog).count(), "Secure"])
 

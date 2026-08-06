@@ -239,7 +239,7 @@ export default function Settings() {
                       onClick={async () => {
                         const res = await Notification.requestPermission();
                         if (res === "granted") {
-                          new Notification("HelpDesk X", { body: "Browser notifications successfully registered!" });
+                          new Notification("SupportFlow", { body: "Browser notifications successfully registered!" });
                         }
                         window.location.reload(); 
                       }}

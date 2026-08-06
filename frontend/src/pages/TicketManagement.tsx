@@ -412,7 +412,7 @@ export default function TicketManagement() {
         <div>
           <h1 className="text-lg font-bold text-white tracking-wide flex items-center gap-2">
             <TicketIcon className="h-5 w-5 text-primary" />
-            HelpDesk X ITSM Center
+            SupportFlow ITSM Center
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
             Logged in as <span className="text-slate-300 font-semibold">{localStorage.getItem("user_name")}</span> • Portal Role: <span className="text-primary font-semibold uppercase">{currentUserRole}</span>
@@ -501,7 +501,7 @@ export default function TicketManagement() {
               <div>
                 <h2 className="text-sm font-bold text-white flex items-center gap-2">
                   <TicketIcon className="h-4 w-4 text-primary" />
-                  {currentUserRole === "Viewer" ? "Your Incident History" : "Corporate Helpdesk Ticket Queue"}
+                  {currentUserRole === "Viewer" ? "Your Incident History" : "Corporate SupportFlow Ticket Queue"}
                 </h2>
                 <p className="text-[10px] text-slate-500 mt-0.5">Filter, monitor, and assign employee tickets</p>
               </div>

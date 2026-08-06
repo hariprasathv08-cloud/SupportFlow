@@ -3,12 +3,12 @@ version: '3.8'
 services:
   db:
     image: postgres:15-alpine
-    container_name: helpdeskx_db
+    container_name: supportflow_db
     restart: always
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres_password_xyz
-      POSTGRES_DB: helpdeskx
+      POSTGRES_DB: supportflow
     ports:
       - "5432:5432"
     volumes:
@@ -16,19 +16,19 @@ services:
 
   backend:
     build: ./backend
-    container_name: helpdeskx_backend
+    container_name: supportflow_backend
     restart: always
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres_password_xyz@db:5432/helpdeskx
+      - DATABASE_URL=postgresql://postgres:postgres_password_xyz@db:5432/supportflow
       - SECRET_KEY=super_secret_key_change_me_in_production_1234567890
     depends_on:
       - db
 
   frontend:
     build: ./frontend
-    container_name: helpdeskx_frontend
+    container_name: supportflow_frontend
     restart: always
     ports:
       - "3000:80"

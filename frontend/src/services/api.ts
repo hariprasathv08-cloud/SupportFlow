@@ -146,7 +146,7 @@ class ApiClient {
 
       if (err.name === "AbortError") {
         window.dispatchEvent(new CustomEvent("backend-offline"));
-        throw new Error("Connection timed out. HelpDesk X server is currently offline or unreachable.");
+        throw new Error("Connection timed out. SupportFlow server is currently offline or unreachable.");
       }
       if (err instanceof TypeError || (err.message && err.message.toLowerCase().includes("fetch"))) {
         window.dispatchEvent(new CustomEvent("backend-offline"));

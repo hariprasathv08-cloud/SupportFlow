@@ -8,7 +8,7 @@ from app.database import Base, get_db
 from app.config import settings
 
 # Test database setup
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test_helpdeskx.db"
+SQLALCHEMY_DATABASE_URL = "sqlite:///./test_supportflow.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -34,7 +34,7 @@ def test_register_user():
     response = client.post(
         f"{settings.API_V1_STR}/auth/register",
         json={
-            "email": "testadmin@helpdeskx.com",
+            "email": "testadmin@supportflow.com",
             "full_name": "Test Admin Profile",
             "role": "Admin",
             "password": "TestPassword123!"
@@ -42,7 +42,7 @@ def test_register_user():
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["email"] == "testadmin@helpdeskx.com"
+    assert data["email"] == "testadmin@supportflow.com"
     assert data["full_name"] == "Test Admin Profile"
     assert data["role"] == "Admin"
 
@@ -50,7 +50,7 @@ def test_login_user():
     response = client.post(
         f"{settings.API_V1_STR}/auth/login",
         json={
-            "email": "testadmin@helpdeskx.com",
+            "email": "testadmin@supportflow.com",
             "password": "TestPassword123!"
         }
     )
@@ -69,7 +69,7 @@ def test_get_me_authorized():
     login_res = client.post(
         f"{settings.API_V1_STR}/auth/login",
         json={
-            "email": "testadmin@helpdeskx.com",
+            "email": "testadmin@supportflow.com",
             "password": "TestPassword123!"
         }
     )
@@ -81,13 +81,13 @@ def test_get_me_authorized():
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["email"] == "testadmin@helpdeskx.com"
+    assert data["email"] == "testadmin@supportflow.com"
 
 def test_get_system_specs():
     login_res = client.post(
         f"{settings.API_V1_STR}/auth/login",
         json={
-            "email": "testadmin@helpdeskx.com",
+            "email": "testadmin@supportflow.com",
             "password": "TestPassword123!"
         }
     )
@@ -106,7 +106,7 @@ def test_user_preferences():
     login_res = client.post(
         f"{settings.API_V1_STR}/auth/login",
         json={
-            "email": "testadmin@helpdeskx.com",
+            "email": "testadmin@supportflow.com",
             "password": "TestPassword123!"
         }
     )

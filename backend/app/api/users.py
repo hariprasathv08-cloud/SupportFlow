@@ -226,8 +226,8 @@ def sync_active_directory(
 ):
     # Simulate directory query
     ad_users = [
-        {"email": "carol.danvers@helpdeskx.com", "full_name": "Carol Danvers", "title": "Security Analyst", "dept": "Security Operations"},
-        {"email": "bruce.banner@helpdeskx.com", "full_name": "Bruce Banner", "title": "IT Manager", "dept": "Infrastructure Systems"}
+        {"email": "carol.danvers@supportflow.com", "full_name": "Carol Danvers", "title": "Security Analyst", "dept": "Security Operations"},
+        {"email": "bruce.banner@supportflow.com", "full_name": "Bruce Banner", "title": "IT Manager", "dept": "Infrastructure Systems"}
     ]
     
     viewer_role = db.query(Role).filter(Role.name == "Viewer").first()
@@ -261,7 +261,7 @@ def import_csv_users(
 ):
     # Simulates CSV reading
     csv_users = [
-        {"email": "peter.parker@helpdeskx.com", "full_name": "Peter Parker", "title": "IT Administrator", "dept": "IT Support"},
+        {"email": "peter.parker@supportflow.com", "full_name": "Peter Parker", "title": "IT Administrator", "dept": "IT Support"},
     ]
     admin_role = db.query(Role).filter(Role.name == "Administrator").first()
     synced = 0

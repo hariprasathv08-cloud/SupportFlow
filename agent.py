@@ -21,7 +21,7 @@ if IS_WINDOWS:
         wmi = None
 
 # Host backend address
-API_URL = os.environ.get("HELPDESK_API_URL", "http://127.0.0.1:8000/api/v1/agents/telemetry")
+API_URL = os.environ.get("SUPPORTFLOW_API_URL", "http://127.0.0.1:8000/api/v1/agents/telemetry")
 UUID_FILE = os.path.join(os.path.abspath(os.path.dirname(__file__)), ".agent_uuid")
 
 def get_or_create_uuid() -> str:

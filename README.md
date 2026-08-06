@@ -1,6 +1,6 @@
-# HelpDesk X - Enterprise IT Support & Monitoring Platform
+# SupportFlow - Enterprise IT Support & Endpoint Management Platform
 
-**HelpDesk X** is a production-ready enterprise-grade IT Support & Infrastructure Monitoring Platform. It integrates real-time Windows system metrics, security diagnostics, LAN subnet scanning, and a complete helpdesk ticket and asset management workflow.
+**SupportFlow** is a production-ready enterprise-grade IT Support & Endpoint Management Platform. It integrates real-time Windows system metrics, security diagnostics, LAN subnet scanning, and a complete ticket and asset management workflow.
 
 ---
 
@@ -19,9 +19,9 @@ Default internal lab accounts automatically created on server startup:
 
 | Role | Email | Password | Permissions |
 | :--- | :--- | :--- | :--- |
-| **Admin** | `admin@helpdeskx.com` | `Admin123!` | Full control: systems, roles, assets, tickets, reports. |
-| **Technician** | `tech@helpdeskx.com` | `Tech123!` | System diagnostics, resolve alerts, assign tickets. |
-| **Viewer** | `viewer@helpdeskx.com` | `Viewer123!` | Read-only metrics, submit tickets, view own history. |
+| **Admin** | `admin@supportflow.com` | `Admin123!` | Full control: systems, roles, assets, tickets, reports. |
+| **Technician** | `tech@supportflow.com` | `Tech123!` | System diagnostics, resolve alerts, assign tickets. |
+| **Viewer** | `viewer@supportflow.com` | `Viewer123!` | Read-only metrics, submit tickets, view own history. |
 
 ---
 
@@ -47,7 +47,7 @@ pip install -r requirements.txt
 # Start backend server
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
-*Note: The server will automatically create `helpdeskx.db` local SQLite database if no external PostgreSQL connection is configured.*
+*Note: The server will automatically create `supportflow.db` local SQLite database if no external PostgreSQL connection is configured.*
 
 ### 2. Frontend Setup
 Navigate to the frontend directory, install npm packages, and start Vite:

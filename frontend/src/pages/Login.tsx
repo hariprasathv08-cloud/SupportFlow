@@ -268,7 +268,7 @@ export default function Login() {
               transition={{ delay: 0.1, duration: 0.4 }}
               className="text-2xl font-black text-white tracking-[0.05em] uppercase"
             >
-              HelpDesk <span className="text-primary font-black">X</span>
+              SupportFlow
             </motion.h1>
             
             <motion.p 
@@ -292,7 +292,7 @@ export default function Login() {
             {/* Action State Title */}
             <div className="mb-6">
               <h2 className="text-xl font-bold text-white tracking-wide">
-                {authMode === "login" && "Welcome Back"}
+                {authMode === "login" && "Welcome to SupportFlow"}
                 {authMode === "register" && "Create Your Account"}
                 {authMode === "forgot-password" && "Reset Credentials"}
               </h2>
@@ -574,7 +574,7 @@ export default function Login() {
                       className="h-4 w-4 rounded bg-slate-900/60 border-slate-800 text-primary focus:ring-0 focus:ring-offset-0 mr-2 mt-0.5 transition-colors cursor-pointer shrink-0"
                     />
                     <span>
-                      I agree to the HelpDesk X security guidelines, network policy, and corporate code of conduct.
+                      I agree to the SupportFlow security guidelines, network policy, and corporate code of conduct.
                     </span>
                   </label>
                 )}
@@ -738,7 +738,7 @@ export default function Login() {
           <div className="text-center mt-8 text-[10px] text-slate-500 font-bold uppercase tracking-wider">
             Secured under encryption policy H26-OPS-4096. 
             <br />
-            © {new Date().getFullYear()} HelpDesk X. All rights reserved.
+            © 2026 SupportFlow. Enterprise IT Support & Endpoint Management Platform.
           </div>
 
         </div>

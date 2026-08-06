@@ -27,7 +27,7 @@ try:
 except Exception as e:
     # Fallback to local SQLite if PostgreSQL connection fails
     print(f"PostgreSQL connection failed ({e}). Falling back to local SQLite database...")
-    db_path = os.path.join(os.path.abspath(os.path.dirname(os.path.dirname(__file__))), "helpdeskx.db")
+    db_path = os.path.join(os.path.abspath(os.path.dirname(os.path.dirname(__file__))), "supportflow.db")
     db_url = f"sqlite:///{db_path}"
     engine = create_engine(
         db_url,

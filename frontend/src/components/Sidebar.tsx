@@ -47,7 +47,7 @@ export default function Sidebar({ role, userName }: SidebarProps) {
       { name: "Assets", path: "/assets", icon: Database },
       { name: "Software Inventory", path: "/software", icon: Layers },
     ] : []),
-    { name: "HelpDesk Tickets", path: "/tickets", icon: Ticket },
+    { name: "SupportFlow Tickets", path: "/tickets", icon: Ticket },
     ...(!isViewer ? [
       { name: "Reports", path: "/reports", icon: FileText },
       { name: "Real-time Alerts", path: "/alerts", icon: AlertTriangle },
@@ -71,7 +71,7 @@ export default function Sidebar({ role, userName }: SidebarProps) {
             animate={{ opacity: 1 }}
             className="ml-3 font-bold text-lg text-slate-800 dark:text-white tracking-wider font-sans whitespace-nowrap"
           >
-            HELPDESK <span className="text-primary">X</span>
+            SUPPORT<span className="text-primary">FLOW</span>
           </motion.span>
         )}
       </div>

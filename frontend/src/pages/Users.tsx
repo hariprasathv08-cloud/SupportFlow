@@ -869,7 +869,7 @@ export default function Users() {
                     required
                     value={createUserEmail}
                     onChange={(e) => setCreateUserEmail(e.target.value)}
-                    placeholder="carol.danvers@helpdeskx.com"
+                    placeholder="carol.danvers@supportflow.com"
                     className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-2 focus:outline-none"
                   />
                 </div>

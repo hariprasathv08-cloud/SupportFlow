@@ -31,7 +31,7 @@ def seed_database():
                 "edit_dashboard": "Modify dashboard metrics charts",
                 "manage_assets": "Create and modify physical assets",
                 "delete_assets": "Decommission hardware assets",
-                "view_tickets": "Read corporate helpdesk tickets",
+                "view_tickets": "Read corporate SupportFlow tickets",
                 "assign_tickets": "Assign incidents to administrators",
                 "resolve_tickets": "Close resolved incidents",
                 "manage_users": "Create and manage operational users",
@@ -69,7 +69,7 @@ def seed_database():
         # Database cleanup: Purge Technician role and reassign associations
         tech_roles = db.query(Role).filter(Role.name.in_([
             "IT Manager", "Network Engineer", "System Administrator", 
-            "Helpdesk Technician", "Security Analyst", "Asset Manager", "Auditor", "Technician"
+            "SupportFlow Technician", "Security Analyst", "Asset Manager", "Auditor", "Technician"
         ])).all()
         
         tech_role_ids = [r.id for r in tech_roles]
@@ -82,8 +82,8 @@ def seed_database():
             for tk in tickets_assigned:
                 tk.assigned_to_id = None
             
-            # Delete mock user 'tech@helpdeskx.com'
-            tech_user = db.query(User).filter(User.email == "tech@helpdeskx.com").first()
+            # Delete mock user 'tech@supportflow.com'
+            tech_user = db.query(User).filter(User.email == "tech@supportflow.com").first()
             if tech_user:
                 db.delete(tech_user)
             
@@ -243,12 +243,12 @@ async def startup_event():
 
     seed_database()
     scheduler.start_scheduler()
-    print("HelpDesk X backend server successfully initialized and monitoring scheduler running.")
+    print("SupportFlow backend server successfully initialized and monitoring scheduler running.")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     scheduler.shutdown_scheduler()
-    print("HelpDesk X scheduler shutdown complete.")
+    print("SupportFlow scheduler shutdown complete.")
 
 # Include Endpoint Controllers
 app.include_router(auth.router, prefix=f"{settings.API_V1_STR}/auth", tags=["Authentication"])
@@ -256,7 +256,7 @@ app.include_router(system.router, prefix=f"{settings.API_V1_STR}/system", tags=[
 app.include_router(network.router, prefix=f"{settings.API_V1_STR}/network", tags=["Network Utilities"])
 app.include_router(diagnostics.router, prefix=f"{settings.API_V1_STR}/diagnostics", tags=["One-Click Checkups"])
 app.include_router(software.router, prefix=f"{settings.API_V1_STR}/software", tags=["Installed Software"])
-app.include_router(tickets.router, prefix=f"{settings.API_V1_STR}/tickets", tags=["HelpDesk System"])
+app.include_router(tickets.router, prefix=f"{settings.API_V1_STR}/tickets", tags=["SupportFlow System"])
 app.include_router(assets.router, prefix=f"{settings.API_V1_STR}/assets", tags=["Infrastructure Inventory"])
 
 # Double-mounting Reports to support both /api/reports and /api/v1/reports

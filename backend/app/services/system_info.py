@@ -249,7 +249,7 @@ def get_system_specs() -> Dict[str, Any]:
 def get_installed_software() -> List[Dict[str, Any]]:
     software_list = []
     if not IS_WINDOWS:
-        return [{"name": "Mock Editor X", "version": "1.0", "publisher": "HelpDesk X Devs", "install_date": "2026-08-01"}]
+        return [{"name": "Mock Editor X", "version": "1.0", "publisher": "SupportFlow Devs", "install_date": "2026-08-01"}]
 
     reg_paths = [
         (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),

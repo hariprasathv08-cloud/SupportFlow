@@ -1,7 +1,7 @@
 services:
   # 1. Backend Web Service (FastAPI)
   - type: web
-    name: helpdeskx-backend
+    name: supportflow-backend
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
@@ -14,7 +14,7 @@ services:
 
   # 2. Frontend Web Service (React/Vite served via Nginx)
   - type: web
-    name: helpdeskx-frontend
+    name: supportflow-frontend
     runtime: docker
     dockerfilePath: ./frontend/Dockerfile
     dockerContext: ./frontend

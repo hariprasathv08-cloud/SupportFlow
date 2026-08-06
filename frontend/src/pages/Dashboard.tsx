@@ -262,7 +262,7 @@ export default function Dashboard() {
                 {openTicketsCount}
               </p>
               <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-                Active helpdesk queue
+                Active SupportFlow queue
               </p>
             </div>
           </div>
@@ -464,7 +464,7 @@ export default function Dashboard() {
                       <Server className="h-8 w-8 text-slate-400 dark:text-slate-600 mb-3 animate-pulse" />
                       <p className="font-bold text-sm text-slate-800 dark:text-slate-200">No monitored endpoints connected.</p>
                       <p className="text-[11px] text-slate-450 mt-1 leading-relaxed">
-                        There are currently no machines connected to HelpDesk X. Install or start the lightweight client-side daemon on your hosts to collect telemetry.
+                        There are currently no machines connected to SupportFlow. Install or start the lightweight client-side daemon on your hosts to collect telemetry.
                       </p>
                       <div className="mt-4 bg-slate-950 rounded-lg p-3 text-left font-mono text-[10px] text-success border border-slate-850 w-full">
                         <p className="text-slate-500 select-none"># Install dependencies & run telemetry agent</p>
