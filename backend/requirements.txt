@@ -14,6 +14,7 @@ openpyxl==3.1.5
 python-multipart==0.0.12
 pytest==8.3.3
 httpx==0.27.2
+sqlite3-to-mysql==2.6.0; sys_platform != 'win32'
 pg8000==1.31.2
 email-validator
 psycopg2-binary==2.9.9
