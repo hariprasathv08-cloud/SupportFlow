@@ -15,23 +15,8 @@ FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 
 # Custom nginx config to support React Router client-side history fallbacks
-COPY <<EOF /etc/nginx/conf.d/default.conf
-server {
-    listen 80;
-    server_name localhost;
+COPY default.conf /etc/nginx/conf.d/default.conf
 
-    location / {
-        root /usr/share/nginx/html;
-        index index.html index.htm;
-        try_files \$uri \$uri/ /index.html;
-    }
-
-    error_page 500 502 503 504 /50x.html;
-    location = /50x.html {
-        root /usr/share/nginx/html;
-    }
-}
-EOF
 
 EXPOSE 80
 

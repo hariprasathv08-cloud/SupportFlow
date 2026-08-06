@@ -19,6 +19,8 @@ class Settings(BaseSettings):
         if not url:
             db_path = os.path.join(os.path.abspath(os.path.dirname(os.path.dirname(__file__))), "supportflow.db")
             return f"sqlite:///{db_path}"
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
         return url
 
     class Config:
