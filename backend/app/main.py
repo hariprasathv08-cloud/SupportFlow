@@ -2,6 +2,7 @@ import asyncio
 import json
 from typing import Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
+from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -122,6 +123,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Redirect root to interactive documentation
+@app.get("/")
+def root_redirect():
+    return RedirectResponse(url="/docs")
 
 # Public Health Check
 @app.get("/health")
