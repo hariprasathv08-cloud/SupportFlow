@@ -221,31 +221,39 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
 # Event triggers
 @app.on_event("startup")
 async def startup_event():
-    # Execute database column upgrades if missing
-    db = SessionLocal()
-    try:
-        from sqlalchemy import inspect
-        inspector = inspect(engine)
-        columns = [col["name"] for col in inspector.get_columns("ticket_messages")]
-        
-        if "is_read" not in columns:
-            print("Upgrading database: adding is_read to ticket_messages...")
-            db.execute(text("ALTER TABLE ticket_messages ADD COLUMN is_read BOOLEAN DEFAULT FALSE NOT NULL"))
-        if "read_at" not in columns:
-            print("Upgrading database: adding read_at to ticket_messages...")
-            db.execute(text("ALTER TABLE ticket_messages ADD COLUMN read_at TIMESTAMP"))
-        if "message_type" not in columns:
-            print("Upgrading database: adding message_type to ticket_messages...")
-            db.execute(text("ALTER TABLE ticket_messages ADD COLUMN message_type VARCHAR DEFAULT 'text' NOT NULL"))
-        db.commit()
-    except Exception as e:
-        print(f"Error running database upgrades: {e}")
-    finally:
-        db.close()
+    # Run heavy database migrations, seeding, and scheduler startup in a background task
+    async def init_db_background():
+        db = SessionLocal()
+        try:
+            from sqlalchemy import inspect
+            inspector = inspect(engine)
+            columns = [col["name"] for col in inspector.get_columns("ticket_messages")]
+            
+            db_upgrade_needed = False
+            if "is_read" not in columns:
+                print("Upgrading database: adding is_read to ticket_messages...")
+                db.execute(text("ALTER TABLE ticket_messages ADD COLUMN is_read BOOLEAN DEFAULT FALSE NOT NULL"))
+                db_upgrade_needed = True
+            if "read_at" not in columns:
+                print("Upgrading database: adding read_at to ticket_messages...")
+                db.execute(text("ALTER TABLE ticket_messages ADD COLUMN read_at TIMESTAMP"))
+                db_upgrade_needed = True
+            if "message_type" not in columns:
+                print("Upgrading database: adding message_type to ticket_messages...")
+                db.execute(text("ALTER TABLE ticket_messages ADD COLUMN message_type VARCHAR DEFAULT 'text' NOT NULL"))
+                db_upgrade_needed = True
+            if db_upgrade_needed:
+                db.commit()
+        except Exception as e:
+            print(f"Error running database upgrades: {e}")
+        finally:
+            db.close()
 
-    seed_database()
-    scheduler.start_scheduler()
-    print("SupportFlow backend server successfully initialized and monitoring scheduler running.")
+        seed_database()
+        scheduler.start_scheduler()
+        print("SupportFlow backend server successfully initialized and monitoring scheduler running in background.")
+
+    asyncio.create_task(init_db_background())
 
 @app.on_event("shutdown")
 async def shutdown_event():

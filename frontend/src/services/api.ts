@@ -1,4 +1,5 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/v1";
+import { getApiUrl } from "../hooks/useBackendStatus";
+const API_URL = getApiUrl();
 
 interface RequestOptions extends RequestInit {
   timeout?: number;
